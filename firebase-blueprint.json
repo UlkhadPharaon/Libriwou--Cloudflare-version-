@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "company": {
+      "title": "Profil Entreprise",
+      "description": "Profil légal et financier de l'utilisateur",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "ifu": { "type": "string" },
+        "rccm": { "type": "string" },
+        "sector": { "type": "string" },
+        "taxRegime": { "type": "string", "enum": ["CME", "RSI", "RNI"] }
+      },
+      "required": ["userId", "companyName", "ifu"]
+    },
+    "transaction": {
+      "title": "Transaction Financière",
+      "description": "Entrée comptable (Achat/Vente/Paie)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amountExclTax": { "type": "number" },
+        "type": { "type": "string", "enum": ["INCOME", "EXPENSE", "PAYROLL"] },
+        "date": { "type": "string", "format": "date" }
+      },
+      "required": ["userId", "type", "date"]
+    },
+    "conversation": {
+      "title": "Discussion IA",
+      "description": "Historique des échanges avec NEO",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "messages": { "type": "array" },
+        "projectId": { "type": "string" },
+        "isEphemeral": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "messages", "updatedAt"]
+    },
+    "project": {
+      "title": "Projet de Discussion",
+      "description": "Regroupement de discussions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/companies/{userId}": {
+      "schema": "company",
+      "description": "Profil entreprise par utilisateur"
+    },
+    "/transactions/{id}": {
+      "schema": "transaction",
+      "description": "Flux financiers"
+    },
+    "/conversations/{id}": {
+      "schema": "conversation",
+      "description": "Sessions de chat"
+    },
+    "/projects/{id}": {
+      "schema": "project",
+      "description": "Projets de regroupement IA"
+    },
+    "/inventory/{id}": {
+      "schema": "object",
+      "description": "Gestion des stocks"
+    },
+    "/employees/{id}": {
+      "schema": "object",
+      "description": "Gestion du personnel"
+    },
+    "/simulations/{id}": {
+      "schema": "object",
+      "description": "Calculs prévisionnels"
+    }
+  }
+}
+

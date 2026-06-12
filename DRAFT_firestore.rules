@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return request.auth.token.email_verified == true; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /companies/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() && request.auth.uid == userId
+                    && isValidId(userId)
+                    && incoming().userId == request.auth.uid
+                    && incoming().keys().hasAll(['userId', 'name'])
+                    && incoming().keys().size() <= 7;
+      allow update: if isSignedIn() && request.auth.uid == userId
+                    && incoming().userId == existing().userId
+                    && incoming().keys().hasAll(['name']) // Simple validation
+                    && incoming().keys().size() <= 7;
+    }
+
+    match /transactions/{transactionId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isVerified()
+                    && incoming().userId == request.auth.uid
+                    && incoming().amount is number && incoming().amount > 0
+                    && incoming().type in ['INCOME', 'EXPENSE'];
+    }
+  }
+}

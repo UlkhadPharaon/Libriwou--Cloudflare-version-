@@ -1,0 +1,161 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives & Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isAdmin() { 
+      return isSignedIn() && 
+             request.auth.token.email == "ulrichtapsoba2009@gmail.com" && 
+             request.auth.token.email_verified == true; 
+    }
+
+    // Validation Helpers
+    function isValidCompany(data) {
+      return data.userId == request.auth.uid &&
+             data.companyName is string && data.companyName.size() <= 150 &&
+             data.ifu is string && data.ifu.size() <= 50 &&
+             data.sector is string && data.sector.size() <= 100;
+    }
+
+    function isValidTransaction(data) {
+      return (data.get('userId', request.auth.uid) == request.auth.uid) &&
+             (data.get('type', 'EXPENSE') in ['INCOME', 'EXPENSE', 'PAYROLL', 'PROPOSED']) &&
+             (!('date' in data) || data.date is string) &&
+             (!('amountExclTax' in data) || data.amountExclTax is number) &&
+             (!('amountInclTax' in data) || data.amountInclTax is number);
+    }
+
+    function isValidConversation(data) {
+      return data.userId == request.auth.uid &&
+             data.title is string && data.title.size() <= 200 &&
+             data.messages is list && data.messages.size() <= 200;
+    }
+
+    // 1. Companies
+    match /companies/{userId} {
+      allow list: if isAdmin();
+      allow get: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidCompany(incoming()) && isVerified();
+      allow update: if isOwner(userId) && (
+        // Action: Profile Update
+        (incoming().diff(existing()).affectedKeys().hasOnly([
+          'companyName', 'ifu', 'rccm', 'phone', 'email', 'address', 
+          'legalStatus', 'sector', 'taxRegime', 'notificationSettings', 
+          'aiCompanionName', 'currency', 'exchangeRate', 'estimatedRevenue',
+          'deadlines'
+        ]))
+      ) && isValidCompany(incoming());
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // 2. Transactions
+    match /transactions/{transactionId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && isValidTransaction(incoming());
+      allow update: if isOwner(existing().userId) && isValidTransaction(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'type', 'date', 'amountExclTax', 'amountInclTax', 'tvaAmount', 'vatAmount',
+          'vendorName', 'category', 'description', 'fecFingerprint', 'invoiceData',
+          'syscohadaCode', 'currency', 'exchangeRate', 'lineItems',
+          'originalAmountExclTax', 'originalAmountInclTax', 'fraudSuspected', 'fraudReason', 'fecValid',
+          'paymentMethod', 'updatedAt'
+        ])
+      );
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    // 3. Conversations
+    match /conversations/{conversationId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && isValidConversation(incoming());
+      allow update: if isOwner(existing().userId) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt', 'messages', 'projectId', 'isEphemeral'])
+      );
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    // 4. Projects
+    match /projects/{projectId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    // 5. Simulations, Inventory, Employees (Generic User Data)
+    match /simulations/{id} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+    
+    match /inventory/{id} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /stock_movements/{id} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /employees/{id} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /company_references/{id} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /agent_skills/{id} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    // 5. Bug Reports
+    match /bug_reports/{id} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow read, delete: if isAdmin();
+    }
+
+    // 6. Intelligence Feed (Public/Global read, Admin write)
+    match /intelligence_feed/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isSignedIn(); // Allow users to "simulate" feed for demo
+    }
+
+    // 7. Invoices (Legacy or Future)
+    match /invoices/{id} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow write: if isVerified() && (incoming().userId == request.auth.uid || resource.data.userId == request.auth.uid);
+    }
+  }
+}
+
