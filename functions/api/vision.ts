@@ -1,13 +1,10 @@
 import OpenAI from 'openai';
 
-
-export default async function handler(req: any, res: any) {
+export const onRequestPost = async ({ request, env }: any) => {
   try {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-    const apiKey = process.env.NVIDIA_API_KEY;
+    const apiKey = env.NVIDIA_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: 'NVIDIA_API_KEY manquante' });
+      return Response.json({ error: 'NVIDIA_API_KEY manquante' }, { status: 500 });
     }
 
     const openai = new OpenAI({
@@ -15,10 +12,9 @@ export default async function handler(req: any, res: any) {
         apiKey: apiKey
     });
     
-    const { base64, mimeType, text } = req.body || {};
+    const body: any = await request.json().catch(() => ({}));
+    const { base64, mimeType, text } = body;
     
-    // nvidia/nemotron-3-nano-omni-30b-a3b-reasoning expects specific formats. Let's send text instead if it fails.
-    // For vision, we have to send image_url dict.
     const messages: any[] = [
         {
             role: "user",
@@ -78,9 +74,9 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
         temperature: 0.1,
     });
     
-    res.json({ text: response.choices[0].message.content });
+    return Response.json({ text: response.choices[0].message.content });
   } catch (error: any) {
     console.error("Erreur gérée dans /api/vision :", error);
-    res.status(500).json({ error: error.message || 'Erreur OCR NVIDIA NIM API', details: error.toString() });
+    return Response.json({ error: error.message || 'Erreur OCR NVIDIA NIM API', details: error.toString() }, { status: 500 });
   }
-}
+};

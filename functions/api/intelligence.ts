@@ -1,11 +1,8 @@
 import OpenAI from 'openai';
 
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  const nvidiaKey = process.env.NVIDIA_API_KEY;
-  const tavilyKey = process.env.TAVILY_API_KEY;
+export const onRequestPost = async ({ request, env }: any) => {
+  const nvidiaKey = env.NVIDIA_API_KEY;
+  const tavilyKey = env.TAVILY_API_KEY;
   
   const generateMockNews = (sector: string, date: string) => {
       return [
@@ -36,12 +33,13 @@ export default async function handler(req, res) {
       ];
   };
 
+  const body = await request.json().catch(() => ({}));
+  const { sector, date } = body;
+
   if (!nvidiaKey || !tavilyKey) {
     console.warn("API Keys missing in /api/intelligence. Returning mock data.");
-    return res.json({ news: generateMockNews(req.body.sector, req.body.date) });
+    return Response.json({ news: generateMockNews(sector, date) });
   }
-
-  const { sector, date } = req.body;
   
   try {
       // 1. Tavily Search
@@ -66,10 +64,10 @@ export default async function handler(req, res) {
            throw new Error('Erreur Tavily API');
       }
 
-      const tavilyData = await tavilyResponse.json();
+      const tavilyData: any = await tavilyResponse.json();
       let searchResultsText = "";
       if (tavilyData && tavilyData.results) {
-         searchResultsText = tavilyData.results.map(r => `Titre: ${r.title}\nURL: ${r.url}\nExtrait: ${r.snippet || r.content || ''}`).join('\n\n');
+         searchResultsText = tavilyData.results.map((r: any) => `Titre: ${r.title}\nURL: ${r.url}\nExtrait: ${r.snippet || r.content || ''}`).join('\n\n');
       }
 
       // 2. NVIDIA NIM DeepSeek V3.2
@@ -114,15 +112,11 @@ NE RENVOIE AUCUN TEXTE en dehors du bloc JSON. Assure-toi de la validité strict
           temperature: 0.1,
       });
 
-      console.log(JSON.stringify(dsResponse.choices[0], null, 2));
-
       let text = dsResponse.choices[0]?.message?.content || "";
       if (!text) {
           throw new Error("L'IA n'a renvoyé aucune réponse.");
       }
-      console.log("AI original text sample:", text.substring(0, 100) + "...");
       
-      // Robust JSON extraction: find the first '{' and last '}'
       let jsonText = text;
       const firstBrace = text.indexOf('{');
       const lastBrace = text.lastIndexOf('}');
@@ -141,31 +135,10 @@ NE RENVOIE AUCUN TEXTE en dehors du bloc JSON. Assure-toi de la validité strict
       
       const generatedNews = parsedData.news || (Array.isArray(parsedData) ? parsedData : []);
       
-      res.json({ news: generatedNews });
+      return Response.json({ news: generatedNews });
 
   } catch (error) {
       console.error("Erreur gérée dans /api/intelligence :", error);
-      // Fallback on mock data instead of erroring
-      const generateMockNews = (sector: string, date: string) => {
-        return [
-          {
-            title: "Nouvelle loi de finances 2026 : Ce qui change pour les PME",
-            excerpt: "La déclaration de TVA passe au format 100% électronique avec des pénalités réduites pour les primo-déclarants.",
-            category: "FISCAL",
-            date: date,
-            url: "",
-            targetSectors: ["GLOBAL"]
-          },
-          {
-            title: "Fonds de soutien à la digitalisation",
-            excerpt: "Un nouveau fonds Ouest-Africain alloue jusqu'à 5M FCFA pour les entreprises modernisant leur gestion financière.",
-            category: "OPPORTUNITY",
-            date: date,
-            url: "",
-            targetSectors: ["GLOBAL", sector]
-          }
-        ];
-      };
-      res.json({ news: generateMockNews(req.body.sector, req.body.date) });
+      return Response.json({ news: generateMockNews(sector, date) });
   }
-}
+};

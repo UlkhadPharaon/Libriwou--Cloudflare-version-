@@ -1,12 +1,10 @@
 import OpenAI from 'openai';
 
-export default async function handler(req: any, res: any) {
+export const onRequestPost = async ({ request, env }: any) => {
   try {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-    const apiKey = process.env.NVIDIA_API_KEY;
+    const apiKey = env.NVIDIA_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: 'NVIDIA_API_KEY manquante' });
+      return Response.json({ error: 'NVIDIA_API_KEY manquante' }, { status: 500 });
     }
 
     const openai = new OpenAI({
@@ -14,7 +12,8 @@ export default async function handler(req: any, res: any) {
         apiKey: apiKey
     });
     
-    const { base64, mimeType, documentType, documentName } = req.body || {};
+    const body: any = await request.json().catch(() => ({}));
+    const { base64, mimeType, documentType, documentName, text: textPayload } = body;
     
     let messages: any[] = [
         {
@@ -36,8 +35,8 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
 
     if (base64 && mimeType) {
         messages[0].content.push({ type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } });
-    } else if (req.body.text) {
-        messages[0].content.push({ type: "text", text: "Voici le contenu textuel du document :\n" + req.body.text });
+    } else if (textPayload) {
+        messages[0].content.push({ type: "text", text: "Voici le contenu textuel du document :\n" + textPayload });
     }
 
     const response = await openai.chat.completions.create({
@@ -48,16 +47,15 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
     
     let text = response.choices[0].message.content || "{}";
     
-    // Safety matching
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
         text = text.substring(firstBrace, lastBrace + 1);
     }
     
-    res.json({ analysis: JSON.parse(text) });
+    return Response.json({ analysis: JSON.parse(text) });
   } catch (error: any) {
     console.error("Erreur gérée dans /api/reference :", error);
-    res.status(500).json({ error: error.message || 'Erreur NVIDIA NIM API', details: error.toString() });
+    return Response.json({ error: error.message || 'Erreur NVIDIA NIM API', details: error.toString() }, { status: 500 });
   }
-}
+};
