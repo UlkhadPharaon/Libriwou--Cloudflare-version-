@@ -6,21 +6,22 @@
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", ui-serif, Georgia, serif;
   
-  --color-gold-500: var(--gold-500);
-  --color-gold-400: var(--gold-400);
-  --color-gold-300: var(--gold-300);
-  --color-gold-200: var(--gold-200);
-  --color-gold-100: var(--gold-100);
+  --color-gold-500: var(--brand-500);
+  --color-gold-400: var(--brand-400);
+  --color-gold-300: var(--brand-300);
+  --color-gold-200: var(--brand-200);
+  --color-gold-100: var(--brand-100);
   
   --color-money-500: var(--money-500);
   --color-money-400: var(--money-400);
   --color-money-glow: var(--money-glow);
   
-  --color-luxury-900: var(--luxury-900);
-  --color-luxury-800: var(--luxury-800);
-  --color-luxury-700: var(--luxury-700);
+  --color-luxury-900: var(--surface-100);
+  --color-luxury-800: var(--surface-200);
+  --color-luxury-700: var(--surface-300);
 
   --color-text-title: var(--text-title);
+  --color-title: var(--text-title);
   --color-bg-overlay: var(--bg-overlay);
   --color-border-subtle: var(--border-subtle);
 
@@ -30,80 +31,80 @@
   --color-zinc-500: var(--zinc-500);
 }
 
-:root.light {
-  --gold-500: #D4AF37;
-  --gold-400: #E5C158;
-  --gold-300: #927722; /* Darker gold for text */
-  --gold-200: #715a1a; /* Even darker gold for smaller text/accents */
-  --gold-100: #18181B; /* Main text is dark zinc-900 */
-  
-  --money-500: #059669;
-  --money-400: #10B981;
-  --money-glow: #10B981;
-  
-  --luxury-900: #F4F4F5; /* Main background - Zinc-100 */
-  --luxury-800: #FFFFFF; /* Card background - White */
-  --luxury-700: #E4E4E7; /* Zinc-200 for subtle borders/accents */
-  
-  --text-title: #09090B; /* Dark text for headings */
-  --bg-overlay: rgba(0, 0, 0, 0.05); /* Light inputs overlay */
-  --border-subtle: rgba(0, 0, 0, 0.15); /* Slightly darker border for light mode */
-
-  --zinc-200: #71717A;
-  --zinc-300: #52525B;
-  --zinc-400: #3F3F46;
-  --zinc-500: #27272A;
-}
-
 :root {
   /* Default to dark if no class */
-  --gold-500: #D4AF37;
-  --gold-400: #E5C158;
-  --gold-300: #F3E5AB;
-  --gold-200: #F8F0CE;
-  --gold-100: #FBF5E9;
+  --brand-500: #10b981; /* Emerald 500 - Brand Primary */
+  --brand-400: #34d399; /* Emerald 400 */
+  --brand-300: #6ee7b7; /* Emerald 300 */
+  --brand-200: #a7f3d0;
+  --brand-100: #f8fafc; /* Main Text White */
   
-  --money-500: #10B981;
-  --money-400: #34D399;
-  --money-glow: #00FF88;
+  --money-500: #10b981;
+  --money-400: #34d399;
+  --money-glow: rgba(16, 185, 129, 0.5);
   
-  --luxury-900: #050505;
-  --luxury-800: #0A0A0A;
-  --luxury-700: #121212;
+  --surface-100: #020617; /* Very Dark Slate */
+  --surface-200: #0f172a; /* Slate 900 */
+  --surface-300: #1e293b; /* Slate 800 */
 
-  --text-title: #FFFFFF;
-  --bg-overlay: rgba(0, 0, 0, 0.4);
-  --border-subtle: rgba(212, 175, 55, 0.1);
+  --text-title: #ffffff;
+  --bg-overlay: rgba(15, 23, 42, 0.6);
+  --border-subtle: rgba(16, 185, 129, 0.15);
 
-  --zinc-200: #e4e4e7;
-  --zinc-300: #d4d4d8;
-  --zinc-400: #a1a1aa;
-  --zinc-500: #71717a;
+  --zinc-200: #e2e8f0;
+  --zinc-300: #cbd5e1;
+  --zinc-400: #94a3b8;
+  --zinc-500: #64748b;
+}
+
+:root.light {
+  --brand-500: #059669; /* Emerald 600 */
+  --brand-400: #10b981; /* Emerald 500 */
+  --brand-300: #047857; /* Emerald 700 for text accents */
+  --brand-200: #064e3b; 
+  --brand-100: #0f172a; /* Slate 900 main text */
+  
+  --money-500: #059669;
+  --money-400: #10b981;
+  --money-glow: #34d399;
+  
+  --surface-100: #f8fafc; /* Slate 50 */
+  --surface-200: #ffffff; /* White */
+  --surface-300: #f1f5f9; /* Slate 100 */
+  
+  --text-title: #020617;
+  --bg-overlay: rgba(241, 245, 249, 0.8); 
+  --border-subtle: rgba(15, 23, 42, 0.1); 
+
+  --zinc-200: #64748b;
+  --zinc-300: #475569;
+  --zinc-400: #334155;
+  --zinc-500: #1e293b;
 }
 
 :root.dark {
-  --gold-500: #D4AF37;
-  --gold-400: #E5C158;
-  --gold-300: #F3E5AB;
-  --gold-200: #F8F0CE;
-  --gold-100: #FBF5E9;
+  --brand-500: #10b981;
+  --brand-400: #34d399;
+  --brand-300: #6ee7b7;
+  --brand-200: #a7f3d0;
+  --brand-100: #f8fafc;
   
-  --money-500: #10B981;
-  --money-400: #34D399;
-  --money-glow: #00FF88;
+  --money-500: #10b981;
+  --money-400: #34d399;
+  --money-glow: rgba(16, 185, 129, 0.5);
   
-  --luxury-900: #050505;
-  --luxury-800: #0A0A0A;
-  --luxury-700: #121212;
+  --surface-100: #020617;
+  --surface-200: #0f172a;
+  --surface-300: #1e293b;
 
-  --text-title: #FFFFFF;
-  --bg-overlay: rgba(0, 0, 0, 0.4);
-  --border-subtle: rgba(212, 175, 55, 0.1);
+  --text-title: #ffffff;
+  --bg-overlay: rgba(15, 23, 42, 0.6);
+  --border-subtle: rgba(16, 185, 129, 0.15);
 
-  --zinc-200: #e4e4e7;
-  --zinc-300: #d4d4d8;
-  --zinc-400: #a1a1aa;
-  --zinc-500: #71717a;
+  --zinc-200: #e2e8f0;
+  --zinc-300: #cbd5e1;
+  --zinc-400: #94a3b8;
+  --zinc-500: #64748b;
 }
 
 @layer base {
@@ -111,21 +112,20 @@
     @apply bg-luxury-900 text-gold-100 antialiased selection:bg-gold-500/30 transition-colors duration-500;
   }
   
-  /* Radial gradients for subtle background glow, inverted correctly in both modes */
   :root.light body {
-    background-image: radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.05) 0%, transparent 60%),
-                      radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.05) 0%, transparent 60%);
+    background-image: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 60%),
+                      radial-gradient(circle at 100% 100%, rgba(5, 150, 105, 0.05) 0%, transparent 60%);
     background-attachment: fixed;
   }
 
   :root.dark body, body {
-    background-image: radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.03) 0%, transparent 50%),
-                      radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
+    background-image: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
+                      radial-gradient(circle at 100% 100%, rgba(5, 150, 105, 0.03) 0%, transparent 50%);
     background-attachment: fixed;
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-serif tracking-tight text-gold-100 transition-colors duration-500;
+    @apply font-serif tracking-tight text-title transition-colors duration-500;
   }
 }
 
@@ -139,15 +139,15 @@
   }
 
   .glow-gold {
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.15), inset 0 0 10px rgba(212, 175, 55, 0.05);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15), inset 0 0 10px rgba(16, 185, 129, 0.05);
   }
   
   :root.light .glow-gold {
-    box-shadow: 0 8px 30px rgba(212, 175, 55, 0.15);
+    box-shadow: 0 8px 30px rgba(16, 185, 129, 0.15);
   }
 
   .text-glow-gold {
-    text-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+    text-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
   }
   
   :root.light .text-glow-gold {
@@ -155,7 +155,7 @@
   }
 
   .text-glow-green {
-    text-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+    text-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
   }
 
   :root.light .text-glow-green {

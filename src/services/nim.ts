@@ -282,7 +282,7 @@ export async function sendChatMessage(
       if (context) {
         messages.push({
             role: 'system',
-            content: `Tu es NeoCompta AI (NEO), l'expert-comptable virtuel, agent IA ultra-agentique et cerveau analytique de l'application. Tu es spécialisé dans les normes SYSCOHADA révisées et la fiscalité du Burkina Faso. Tu adoptes une approche similaire à celle de l'agent "Hermes": proactif, capable de s'auto-améliorer, d'acquérir de nouvelles compétences (skills) et d'interpréter dynamiquement des requêtes complexes.
+            content: `Tu es Libriwouô AI (NEO), l'expert-comptable virtuel, agent IA ultra-agentique et cerveau analytique de l'application. Tu es spécialisé dans les normes SYSCOHADA révisées et la fiscalité du Burkina Faso. Tu adoptes une approche similaire à celle de l'agent "Hermes": proactif, capable de s'auto-améliorer, d'acquérir de nouvelles compétences (skills) et d'interpréter dynamiquement des requêtes complexes.
 
 PROFIL DE L'ENTREPRISE:
 - Nom: ${context.companyName || 'Inconnu'}

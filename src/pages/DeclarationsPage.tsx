@@ -267,7 +267,7 @@ Analyse mon profil et propose une (1) optimisation proactive percutante (ex: cha
           }),
           new Paragraph({
             children: [
-              new TextRun({ text: "Document généré par NeoCompta IA. Les montants doivent être reportés sur e-SINTAX.", font: "Arial", size: 18, color: "666666", italics: true }),
+              new TextRun({ text: "Document généré par Libriwouô IA. Les montants doivent être reportés sur e-SINTAX.", font: "Arial", size: 18, color: "666666", italics: true }),
             ],
             spacing: { before: 400 }
           })
@@ -610,7 +610,7 @@ Analyse mon profil et propose une (1) optimisation proactive percutante (ex: cha
             <div className="mt-6 p-4 rounded-xl bg-luxury-800/80 border border-gold-500/20 shadow-[0_0_15px_rgba(212,175,55,0.1)] flex gap-4">
                 <AlertCircle className="w-5 h-5 text-gold-400 shrink-0 mt-0.5" />
                 <p className="text-sm font-sans text-gold-500/80 leading-relaxed">
-                  <strong className="text-gold-300">Conformité Juridique :</strong> Les documents générés par NeoComptaAI sont des proformas analytiques (brouillons).
+                  <strong className="text-gold-300">Conformité Juridique :</strong> Les documents générés par Libriwouô sont des proformas analytiques (brouillons).
                   La validation et télédéclaration finales doivent s'effectuer officiellement sur la plateforme <strong>e-SINTAX</strong> de la DGI du Burkina Faso. 
                   NEO calcule vos montants à partir du livre-journal pour minimiser vos erreurs de saisie.
                 </p>

@@ -246,7 +246,7 @@ export function BankPage() {
           </div>
           <h3 className="text-2xl font-serif text-gold-100 mb-3">Importez votre relevé bancaire</h3>
           <p className="text-zinc-400 mb-8 max-w-md mx-auto">
-            Glissez-déposez votre fichier <strong>CSV</strong>. NeoCompta analysera les flux et fera le lien avec vos factures automatiquement.
+            Glissez-déposez votre fichier <strong>CSV</strong>. Libriwouô analysera les flux et fera le lien avec vos factures automatiquement.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-8 bg-luxury-900/50 p-4 rounded-xl border border-border-subtle max-w-md mx-auto">

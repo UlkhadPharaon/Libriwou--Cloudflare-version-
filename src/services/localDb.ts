@@ -117,7 +117,7 @@ class LocalDatabase {
       return;
     }
 
-    const request = window.indexedDB.open("NeoComptaLocalDB", 1);
+    const request = window.indexedDB.open("LibriwouoLocalDB", 1);
 
     request.onerror = (e) => {
       console.error("IndexedDB blocked or failed to load. Falling back to localStorage.", e);

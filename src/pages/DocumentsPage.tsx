@@ -77,7 +77,7 @@ const getDocuments = () => {
           <p className="text-sm font-sans text-gold-500/80">
             <strong className="text-gold-300">Avis Important :</strong> Conformément à la réglementation de la DGI du Burkina Faso, 
             les documents régaliens (Attestations de Situation Fiscale, Quittances e-SINTAX, Certificats d'exonération) 
-            relèvent de la compétence exclusive de l'administration et ne peuvent être générés par NeoComptaAI.
+            relèvent de la compétence exclusive de l'administration et ne peuvent être générés par Libriwouô.
           </p>
         </div>
       </header>

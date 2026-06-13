@@ -71,7 +71,7 @@ export async function generateInvoiceDOCX(data: {
                             alignment: AlignmentType.CENTER,
                             children: [
                                 new TextRun({
-                                    text: `Document généré par NeoCompta - ${company?.companyName || 'Mon Entreprise'}`,
+                                    text: `Document généré par Libriwouô - ${company?.companyName || 'Mon Entreprise'}`,
                                     size: 16,
                                     color: "888888",
                                 }),

@@ -81,7 +81,7 @@ export function LandingPage() {
       >
         <div className="flex items-center gap-3">
            <NeoLogo size="sm" showText={false} />
-           <span className="font-serif font-semibold text-lg tracking-tight text-white">NeoCompta</span>
+           <span className="font-serif font-semibold text-lg tracking-tight text-white">Libriwouô</span>
         </div>
         <button 
           onClick={handleLogin}
@@ -146,7 +146,7 @@ export function LandingPage() {
         <section className="bg-luxury-900 border-y border-white/5 py-16 sm:py-24 px-6 overflow-hidden">
            <div className="max-w-5xl mx-auto">
               <div className="text-center mb-12 sm:mb-16">
-                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight mb-3.5 text-white">Pourquoi choisir NeoCompta ?</h2>
+                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight mb-3.5 text-white">Pourquoi choisir Libriwouô ?</h2>
                  <p className="text-sm sm:text-base text-zinc-400 max-w-xl mx-auto">Une application claire et zen, pensée pour ceux qui détestent la paperasse.</p>
               </div>
 
@@ -213,7 +213,7 @@ export function LandingPage() {
                     <div>
                        <h3 className="text-base font-semibold text-white mb-2">Scanner photo intelligent</h3>
                        <p className="text-sm text-zinc-400 leading-relaxed">
-                          Prenez simplement en photo vos reçus et tickets de caisse. NeoCompta lit le document tout seul, extrait les montants de TVA et range le tout en sécurité.
+                          Prenez simplement en photo vos reçus et tickets de caisse. Libriwouô lit le document tout seul, extrait les montants de TVA et range le tout en sécurité.
                        </p>
                     </div>
                  </motion.div>
@@ -451,7 +451,7 @@ export function LandingPage() {
               <div className="space-y-4">
                  <FAQItem 
                     question="Je n'ai pas de notions de comptabilité, puis-je utiliser l'application ?" 
-                    answer="Oui, tout à fait. NeoCompta remplace le langage complexe des experts par des notions très faciles de la vie de tous les jours : Recettes, Dépenses et Bénéfices. Vous n'avez aucune écriture technique à enregistrer vous-même."
+                    answer="Oui, tout à fait. Libriwouô remplace le langage complexe des experts par des notions très faciles de la vie de tous les jours : Recettes, Dépenses et Bénéfices. Vous n'avez aucune écriture technique à enregistrer vous-même."
                  />
                  <FAQItem 
                     question="Les calculs respectent-ils vraiment les lois du Burkina Faso ?" 
@@ -490,7 +490,7 @@ export function LandingPage() {
       </main>
 
       <footer className="py-6 text-center text-zinc-600 text-xs border-t border-white/5 bg-luxury-950">
-         <p>© {new Date().getFullYear()} NeoCompta. Tous droits réservés.</p>
+         <p>© {new Date().getFullYear()} Libriwouô. Tous droits réservés.</p>
       </footer>
     </div>
   );

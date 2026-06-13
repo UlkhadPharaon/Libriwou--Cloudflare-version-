@@ -8,64 +8,41 @@ interface LogoProps {
 }
 
 export function NeoLogo({ className, size = 'md', showText = true }: LogoProps) {
+  // Let the image natural aspect ratio drive the width.
   const sizes = {
-    sm: 'w-8 h-8',
-    md: 'w-12 h-12',
-    lg: 'w-24 h-24',
-    xl: 'w-48 h-48',
+    sm: 'h-8',
+    md: 'h-10',
+    lg: 'h-24',
+    xl: 'h-40',
   };
 
   const textSizes = {
-    sm: 'text-lg',
-    md: 'text-xl',
-    lg: 'text-3xl',
-    xl: 'text-5xl',
-  };
-
-  const letterSizes = {
-    sm: 'text-sm',
-    md: 'text-lg',
+    sm: 'text-xl',
+    md: 'text-2xl',
     lg: 'text-4xl',
-    xl: 'text-8xl',
+    xl: 'text-6xl',
   };
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <div className={cn("relative flex items-center justify-center shrink-0", sizes[size])}>
-        {/* Glow background */}
-        <motion.div 
-          animate={{ 
-            scale: [1, 1.2, 1],
-            opacity: [0.3, 0.6, 0.3]
-          }}
-          transition={{ 
-            duration: 4, 
-            repeat: Infinity,
-            ease: "easeInOut" 
-          }}
-          className="absolute inset-0 bg-gold-500/20 blur-xl rounded-full"
+      <motion.div 
+        className={cn("relative flex items-center justify-center shrink-0", sizes[size])}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <img 
+          src="/logo-main.png" 
+          alt="Logo Libriwouô" 
+          className="h-full w-auto object-contain drop-shadow-md" 
         />
-        
-        {/* Decorative ring */}
-        <div className="absolute inset-0 border border-gold-500/30 rounded-full scale-110" />
-        
-        {/* Main Logo Icon (The 'N') */}
-        <div className="relative z-10 bg-luxury-900 rounded-full w-full h-full flex items-center justify-center border border-gold-500/10 shadow-[0_0_15px_rgba(212,175,55,0.2)]">
-          <span className={cn(
-            "font-serif font-bold text-gold-400 select-none italic tracking-tighter",
-            letterSizes[size]
-          )}>
-            N
-          </span>
-        </div>
-      </div>
+      </motion.div>
 
       {showText && (
         <span className={cn(
-          "font-serif font-medium tracking-tight text-gold-100 italic",
+          "font-serif font-bold tracking-tight text-title",
           textSizes[size]
         )}>
-          NeoCompta AI
+          Libriwouô
         </span>
       )}
     </div>

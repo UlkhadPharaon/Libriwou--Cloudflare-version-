@@ -343,7 +343,7 @@ export function DashboardPage() {
                     </span>
                   </div>
                   <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Grâce à la technologie IndexedDB persistante, votre navigateur réserve jusqu'à 80% de l'espace disque de l'appareil (plusieurs Gigaoctets) et s'engage à **ne jamais nettoyer automatiquement** le cache de NeoCompta.
+                    Grâce à la technologie IndexedDB persistante, votre navigateur réserve jusqu'à 80% de l'espace disque de l'appareil (plusieurs Gigaoctets) et s'engage à **ne jamais nettoyer automatiquement** le cache de Libriwouô.
                   </p>
                 </div>
 

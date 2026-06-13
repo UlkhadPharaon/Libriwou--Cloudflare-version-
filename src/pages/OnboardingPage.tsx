@@ -124,7 +124,7 @@ export function OnboardingPage() {
                 value={formData.companyName}
                 onChange={e => setFormData({...formData, companyName: e.target.value})}
                 className="w-full bg-black/40 border border-gold-500/20 rounded-xl px-4 py-2.5 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40 transition-all duration-300 placeholder:text-gold-500/30"
-                placeholder="NeoCompta SARL"
+                placeholder="Libriwouô SARL"
               />
             </div>
 

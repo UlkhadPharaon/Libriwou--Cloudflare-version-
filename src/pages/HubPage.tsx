@@ -41,31 +41,13 @@ type Project = {
 
 function CompanionAvatar({ className = '', animated = false }: { className?: string, animated?: boolean }) {
   return (
-    <svg className={className} viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <motion.g
-        animate={animated ? { y: [-5, 5, -5] } : {}}
-        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-      >
-        <circle cx="100" cy="100" r="70" fill="currentColor" opacity="0.05" filter="blur(20px)" />
-        <path d="M100 150C70 150 55 120 55 100C55 60 75 40 100 40C125 40 145 60 145 100C145 120 130 150 100 150Z" fill="url(#bodyGradient)" />
-        <path d="M75 105C85 115 115 115 125 105C125 115 110 125 100 125C90 125 75 115 75 105Z" fill="#10B981" opacity="0.9" />
-        <path d="M65 70L30 40L75 55Z" fill="url(#bodyGradient)" />
-        <path d="M135 70L170 40L125 55Z" fill="url(#bodyGradient)" />
-        <circle cx="85" cy="85" r="9" fill="#050505" />
-        <circle cx="115" cy="85" r="9" fill="#050505" />
-        <circle cx="82" cy="82" r="3.5" fill="#FFFFFF" />
-        <circle cx="112" cy="82" r="3.5" fill="#FFFFFF" />
-        <motion.path d="M50 110C35 125 25 110 25 100" fill="none" stroke="url(#bodyGradient)" strokeWidth="10" strokeLinecap="round" animate={animated ? { rotate: [0, 8, 0] } : {}} transition={{ duration: 2.5, repeat: Infinity }} style={{ transformOrigin: '50px 110px' }} />
-        <motion.path d="M150 110C165 125 175 110 175 100" fill="none" stroke="url(#bodyGradient)" strokeWidth="10" strokeLinecap="round" animate={animated ? { rotate: [0, -8, 0] } : {}} transition={{ duration: 2.5, repeat: Infinity }} style={{ transformOrigin: '150px 110px' }} />
-        <motion.path d="M100 145 C100 180 120 190 130 180 C140 170 130 150 120 155" fill="none" stroke="url(#bodyGradient)" strokeWidth="8" strokeLinecap="round" animate={animated ? { rotate: [0, 5, -5, 0] } : {}} transition={{ duration: 4, repeat: Infinity }} style={{ transformOrigin: '100px 145px' }} />
-        <defs>
-          <linearGradient id="bodyGradient" x1="55" y1="40" x2="145" y2="150" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#2563EB" />
-            <stop offset="1" stopColor="#4F46E5" />
-          </linearGradient>
-        </defs>
-      </motion.g>
-    </svg>
+    <motion.div
+      className={cn("rounded-2xl overflow-hidden flex items-center justify-center shrink-0 bg-luxury-800/50 border border-border-subtle p-1", className)}
+      animate={animated ? { y: [-2, 2, -2] } : {}}
+      transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+    >
+      <img src="/mascotte.png" alt="Mascotte Libriwouô" className="w-full h-full object-contain filter drop-shadow-md" />
+    </motion.div>
   );
 }
 

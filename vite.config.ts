@@ -16,22 +16,22 @@ export default defineConfig(({mode}) => {
         workbox: {
           maximumFileSizeToCacheInBytes: 5000000
         },
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-192x192.svg', 'pwa-512x512.svg'],
+        includeAssets: ['logo-main.png'],
         manifest: {
-          name: 'NeoCompta AI',
-          short_name: 'NeoCompta',
+          name: 'Libriwouô',
+          short_name: 'Libriwouô',
           description: 'Business Intelligence pour le Burkina Faso et l\'UEMOA',
           theme_color: '#ffffff',
           icons: [
             {
-              src: 'pwa-192x192.svg',
+               src: 'logo-main.png',
               sizes: '192x192',
-              type: 'image/svg+xml'
+              type: 'image/png'
             },
             {
-              src: 'pwa-512x512.svg',
+              src: 'logo-main.png',
               sizes: '512x512',
-              type: 'image/svg+xml'
+              type: 'image/png'
             }
           ]
         }

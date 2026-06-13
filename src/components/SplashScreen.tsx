@@ -38,7 +38,7 @@ export function SplashScreen({ onFinish }: { onFinish?: () => void }) {
             transition={{ delay: 0.3 }}
             className="mt-6 text-3xl md:text-4xl font-serif text-gold-100 italic text-center"
           >
-            NeoCompta AI
+            Libriwouô
           </motion.h1>
         </div>
 
