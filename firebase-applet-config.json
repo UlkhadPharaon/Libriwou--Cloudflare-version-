@@ -1,10 +1,10 @@
 {
-  "projectId": "spring-archive-m67s8",
-  "appId": "1:408968339299:web:240b8dbfaf08097e54bd56",
-  "apiKey": "AIzaSyDM4qA0erXnpaRQ7v_KWfDQXGxlIL9wicQ",
-  "authDomain": "spring-archive-m67s8.firebaseapp.com",
+  "projectId": "gen-lang-client-0842964111",
+  "appId": "1:109850373335:web:39038d26045c870426d492",
+  "apiKey": "AIzaSyCwG0OxRAeTit6okcPl-yZjZVL0MT-G6NU",
+  "authDomain": "gen-lang-client-0842964111.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-0f42aaa8-adbe-4b86-92a9-636502e4ef31",
-  "storageBucket": "spring-archive-m67s8.firebasestorage.app",
-  "messagingSenderId": "408968339299",
+  "storageBucket": "gen-lang-client-0842964111.firebasestorage.app",
+  "messagingSenderId": "109850373335",
   "measurementId": ""
 }

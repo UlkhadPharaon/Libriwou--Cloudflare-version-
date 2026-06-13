@@ -9,14 +9,13 @@ export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
   })
-}, firebaseConfig.firestoreDatabaseId);
+}, (firebaseConfig as any).firestoreDatabaseId || '(default)');
 
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    // Graceful logging for sandbox or offline environments
-    console.log("ℹ️ Firebase Firestore est configuré en mode local-first. Vos données sont prêtes et sécurisées en local.");
+    console.error("Firebase connection test failed:", error);
   }
 }
 testConnection();
