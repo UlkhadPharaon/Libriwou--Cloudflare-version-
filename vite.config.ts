@@ -16,12 +16,16 @@ export default defineConfig(({mode}) => {
         workbox: {
           maximumFileSizeToCacheInBytes: 5000000
         },
-        includeAssets: ['logo-main.png'],
+        includeAssets: ['favicon.png', 'logo-main.png', 'mascotte.png'],
+        devOptions: {
+          enabled: true
+        },
         manifest: {
           name: 'Libriwouô',
           short_name: 'Libriwouô',
           description: 'Business Intelligence pour le Burkina Faso et l\'UEMOA',
-          theme_color: '#ffffff',
+          theme_color: '#10b981',
+          background_color: '#020617',
           icons: [
             {
                src: 'logo-main.png',
