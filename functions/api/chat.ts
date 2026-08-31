@@ -45,7 +45,7 @@ export const onRequestPost = async ({ request, env }: any) => {
 
     if (stream) {
       const streamOptions: any = {
-          model: "stepfun-ai/step-3.7-flash",
+          model: "nvidia/nemotron-3.5-lightning-30b-a3b",
           messages: finalMessages,
           tools,
           temperature: 0.60,
@@ -74,7 +74,7 @@ export const onRequestPost = async ({ request, env }: any) => {
       });
     } else {
       const options: any = {
-          model: "stepfun-ai/step-3.7-flash",
+          model: "nvidia/nemotron-3.5-lightning-30b-a3b",
           messages: finalMessages,
           tools,
           temperature: 0.60,
