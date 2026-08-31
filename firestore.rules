@@ -145,10 +145,10 @@ service cloud.firestore {
       allow read, delete: if isAdmin();
     }
 
-    // 6. Intelligence Feed (Public/Global read, Admin write)
+    // 6. Intelligence Feed (read-only for clients; writes must use a trusted backend)
     match /intelligence_feed/{id} {
       allow read: if isSignedIn();
-      allow write: if isAdmin() || isSignedIn(); // Allow users to "simulate" feed for demo
+      allow write: if false;
     }
 
     // 7. Invoices (Legacy or Future)
