@@ -106,7 +106,7 @@ Renvoie UNIQUEMENT un objet JSON contenant une propriété "news" qui est un tab
 NE RENVOIE AUCUN TEXTE en dehors du bloc JSON. Assure-toi de la validité stricte de la syntaxe JSON. Exemple: {"news": [{"title": "...", "excerpt": "..."}]}`;
 
       const dsResponse = await openai.chat.completions.create({
-          model: "stepfun-ai/step-3.7-flash",
+          model: "nvidia/nemotron-3.5-lightning-30b-a3b",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 4096,
           temperature: 0.1,

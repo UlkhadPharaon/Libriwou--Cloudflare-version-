@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import 'dotenv/config';
 
 import { onRequestPost as chatHandler } from './functions/api/chat.js';
 import { onRequestPost as visionHandler } from './functions/api/vision.js';
