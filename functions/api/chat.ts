@@ -45,7 +45,7 @@ export const onRequestPost = async ({ request, env }: any) => {
 
     if (stream) {
       const streamOptions: any = {
-          model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+          model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
           messages: finalMessages,
           tools,
           temperature: 0.60,
@@ -74,7 +74,7 @@ export const onRequestPost = async ({ request, env }: any) => {
       });
     } else {
       const options: any = {
-          model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+          model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
           messages: finalMessages,
           tools,
           temperature: 0.60,

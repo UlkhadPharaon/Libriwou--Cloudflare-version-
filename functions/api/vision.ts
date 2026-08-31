@@ -69,7 +69,7 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
     }
 
     const response = await openai.chat.completions.create({
-        model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        model: "meta/llama-3.2-11b-vision-instruct",
         messages: messages as any,
         temperature: 0.1,
     });
