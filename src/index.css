@@ -47,49 +47,24 @@
 }
 
 :root {
-  /* Default to dark if no class */
-  --brand-500: #10b981; /* Emerald 500 - Brand Primary */
-  --brand-400: #34d399; /* Emerald 400 */
-  --brand-300: #6ee7b7; /* Emerald 300 */
-  --brand-200: #a7f3d0;
-  --brand-100: #f8fafc; /* Main Text White */
-  
-  --money-500: #10b981;
-  --money-400: #34d399;
-  --money-glow: rgba(16, 185, 129, 0.5);
-  
-  --surface-100: #020617; /* Very Dark Slate */
-  --surface-200: #0f172a; /* Slate 900 */
-  --surface-300: #1e293b; /* Slate 800 */
+  /* Default theme is light */
+  --brand-500: #059669;
+  --brand-400: #10b981;
+  --brand-300: #047857;
+  --brand-200: #064e3b;
+  --brand-100: #0f172a;
 
-  --text-title: #ffffff;
-  --bg-overlay: rgba(15, 23, 42, 0.6);
-  --border-subtle: rgba(16, 185, 129, 0.15);
-
-  --zinc-200: #e2e8f0;
-  --zinc-300: #cbd5e1;
-  --zinc-400: #94a3b8;
-  --zinc-500: #64748b;
-}
-
-:root.light {
-  --brand-500: #059669; /* Emerald 600 */
-  --brand-400: #10b981; /* Emerald 500 */
-  --brand-300: #047857; /* Emerald 700 for text accents */
-  --brand-200: #064e3b; 
-  --brand-100: #0f172a; /* Slate 900 main text */
-  
   --money-500: #059669;
   --money-400: #10b981;
   --money-glow: #34d399;
-  
-  --surface-100: #f8fafc; /* Slate 50 */
-  --surface-200: #ffffff; /* White */
-  --surface-300: #f1f5f9; /* Slate 100 */
-  
+
+  --surface-100: #f8fafc;
+  --surface-200: #ffffff;
+  --surface-300: #f1f5f9;
+
   --text-title: #020617;
-  --bg-overlay: rgba(241, 245, 249, 0.8); 
-  --border-subtle: rgba(15, 23, 42, 0.1); 
+  --bg-overlay: rgba(241, 245, 249, 0.8);
+  --border-subtle: rgba(15, 23, 42, 0.1);
 
   --zinc-200: #64748b;
   --zinc-300: #475569;
@@ -103,11 +78,11 @@
   --brand-300: #6ee7b7;
   --brand-200: #a7f3d0;
   --brand-100: #f8fafc;
-  
+
   --money-500: #10b981;
   --money-400: #34d399;
   --money-glow: rgba(16, 185, 129, 0.5);
-  
+
   --surface-100: #020617;
   --surface-200: #0f172a;
   --surface-300: #1e293b;
@@ -122,9 +97,34 @@
   --zinc-500: #64748b;
 }
 
+:root.light {
+  --brand-500: #059669;
+  --brand-400: #10b981;
+  --brand-300: #047857;
+  --brand-200: #064e3b;
+  --brand-100: #0f172a;
+
+  --money-500: #059669;
+  --money-400: #10b981;
+  --money-glow: #34d399;
+
+  --surface-100: #f8fafc;
+  --surface-200: #ffffff;
+  --surface-300: #f1f5f9;
+
+  --text-title: #020617;
+  --bg-overlay: rgba(241, 245, 249, 0.8);
+  --border-subtle: rgba(15, 23, 42, 0.1);
+
+  --zinc-200: #64748b;
+  --zinc-300: #475569;
+  --zinc-400: #334155;
+  --zinc-500: #1e293b;
+}
+
 @layer base {
   body {
-    @apply bg-luxury-900 text-gold-100 antialiased selection:bg-gold-500/30 transition-colors duration-500;
+    @apply bg-luxury-200 text-text-title antialiased selection:bg-gold-500/30 transition-colors duration-500;
   }
   
   :root.light body {
@@ -133,7 +133,8 @@
     background-attachment: fixed;
   }
 
-  :root.dark body, body {
+  :root.dark body {
+    @apply bg-luxury-900 text-gold-100;
     background-image: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
                       radial-gradient(circle at 100% 100%, rgba(5, 150, 105, 0.03) 0%, transparent 50%);
     background-attachment: fixed;
