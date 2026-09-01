@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, BorderStyle, WidthType } from 'docx';
 import { saveAs } from 'file-saver';
 import { sendChatMessage, UserContext } from '../services/nim';
+import { localDb } from '../services/localDb';
 import { ErrorReporter } from '../components/ErrorReporter';
 
 interface TaxDeclaration {
@@ -35,31 +36,31 @@ export function DeclarationsPage() {
   const [formData, setFormData] = useState<{ ca?: number; tvaCollected?: number; tvaDeductible?: number }>({});
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) return;
-      
-      // Listen to company
-      const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-        if (docSnap.exists()) setCompany(docSnap.data());
-      });
-
-      // Fetch basic transaction stats for the optimizer
-      const q = query(
-        collection(db, 'transactions'),
-        where('userId', '==', user.uid),
-        orderBy('date', 'desc')
-      );
-      
-      const unsubscribeTransactions = onSnapshot(q, (snapshot) => {
-        let totalRev = 0;
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          if (data.userId === user.uid && data.type === 'income') {
-            totalRev += data.amount || 0;
+    const user = auth.currentUser;
+    if (!user) {
+      const unsubAuth = auth.onAuthStateChanged((u) => { if (u) window.location.reload(); });
+      return () => unsubAuth();
+    }
+    // Listen to company via localDb (with Firestore fallback)
+    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list: any[]) => {
+          if (list.length > 0) setCompany(list[0] as any);
+          else {
+            import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
+              getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
+            });
           }
         });
-        setRevenue(totalRev);
-      });
+
+    // Fetch basic transaction stats for the optimizer via localDb
+    const unsubscribeTransactions = localDb.subscribe('transactions', user.uid, (txs: any[]) => {
+          let totalRev = 0;
+          txs.forEach((data: any) => {
+            if (data.type === 'INCOME' || data.type === 'income') {
+              totalRev += Number(data.amountInclTax ?? data.amountExclTax ?? data.amount ?? 0);
+            }
+          });
+          setRevenue(totalRev);
+        });
 
       // Listen to declarations (Mocking for now, we'll auto-generate a list based on current month)
       const currentMonth = new Date().toISOString().slice(0, 7);
@@ -96,11 +97,9 @@ export function DeclarationsPage() {
       setLoading(false);
 
       return () => {
-        unsubscribeCompany();
-        unsubscribeTransactions();
+        try { unsubscribeCompany(); } catch {}
+        try { unsubscribeTransactions(); } catch {}
       };
-    });
-    return () => unsubscribeAuth();
   }, []);
 
   const handleOptimization = async () => {

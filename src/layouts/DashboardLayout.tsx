@@ -45,7 +45,7 @@ export function DashboardLayout() {
     return (
       <>
         <div className="p-6 flex items-center justify-between neo-logo-container">
-          <NeoLogo size="sm" />
+          <NeoLogo size="sm" showText={false} />
           <button 
             className="md:hidden p-2 text-gold-500/60 hover:text-gold-400"
             onClick={() => setIsMobileMenuOpen(false)}
@@ -123,7 +123,7 @@ export function DashboardLayout() {
     <div className="min-h-screen bg-transparent text-gold-100 flex flex-col md:flex-row font-sans">
       {/* Mobile Header */}
       <header className="md:hidden flex items-center justify-between p-4 border-b border-border-subtle bg-luxury-900/80 backdrop-blur-xl sticky top-0 z-20 neo-logo-container">
-        <NeoLogo size="sm" />
+        <NeoLogo size="sm" showText={false} />
         <button 
           onClick={() => setIsMobileMenuOpen(true)}
           className="p-2 text-gold-500/60 hover:text-gold-400"

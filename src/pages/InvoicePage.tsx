@@ -11,6 +11,7 @@ import {
   Download
 } from 'lucide-react';
 import { generateInvoiceDOCX } from '../lib/docx-generator';
+import { localDb } from '../services/localDb';
 
 async function generateFECFingerprint(companyId: string, amount: number, timestamp: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -152,7 +153,7 @@ export function InvoicePage() {
         const timestampStr = new Date().toISOString();
         const fingerprint = await generateFECFingerprint(auth.currentUser.uid, numAmountHT, timestampStr);
 
-        await addDoc(collection(db, 'transactions'), {
+        const txPayload = {
           userId: auth.currentUser.uid,
           type: 'INCOME',
           date: timestampStr.split('T')[0],
@@ -175,7 +176,9 @@ export function InvoicePage() {
             paymentMethod,
             elements
           }
-        });
+        };
+        localDb.add('transactions', txPayload);
+        try { await addDoc(collection(db, 'transactions'), txPayload); } catch(e){ console.warn('[Invoice] Firestore sync failed (local preserved):', e); }
 
         setSuccessMessage('Facture générée. Enregistrée dans le coffre-fort numérique avec signature FEC.');
       } else {

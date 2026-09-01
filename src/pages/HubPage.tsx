@@ -6,6 +6,7 @@ import { Send, Paperclip, Bot, User, UserCircle, FileText, X, CheckCircle2, Load
 import { sendChatMessage, ExtractedTransaction } from '../services/nim';
 import { extractTextFromFile } from '../lib/file-extractor';
 import { db } from '../firebase';
+import { localDb } from '../services/localDb';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorReporter } from '../components/ErrorReporter';
 import { collection, addDoc, query, where, onSnapshot, doc, getDoc, updateDoc, deleteDoc, orderBy, getDocs, setDoc } from 'firebase/firestore';
@@ -1223,14 +1224,24 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
         ...args,
         amountExclTax: Number(args.amountExclTax) || 0,
         vatAmount: Number(args.vatAmount) || 0,
+        tvaAmount: Number(args.vatAmount) || 0,
         amountInclTax: Number(args.amountInclTax) || 0,
         userId: user.uid,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        fecFingerprint: `NEO-${Date.now()}`,
+        paymentMethod: 'Cash',
+        fecValid: true
       };
 
+      // 1) PRIMARY: Local-first save (IndexedDB) — visible immediately in Dépenses / Journal / Vault
+      localDb.add('transactions', transactionData);
+
+      // 2) BEST-EFFORT: Cloud sync to Firestore (for multi-device / backup)
       try {
         await addDoc(collection(db, 'transactions'), transactionData);
       } catch (error) {
+        // Non-blocking: local save already succeeded. Log for diagnostics.
+        console.warn('[Neo] Firestore sync failed (local save preserved):', error);
         handleFirestoreError(error, OperationType.CREATE, 'transactions');
       }
       setStatus('saved');

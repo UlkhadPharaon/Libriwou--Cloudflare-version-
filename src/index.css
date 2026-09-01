@@ -31,19 +31,32 @@
   --color-money-400: var(--money-400);
   --color-money-glow: var(--money-glow);
   
+  --color-luxury-950: var(--surface-100);
   --color-luxury-900: var(--surface-100);
   --color-luxury-800: var(--surface-200);
   --color-luxury-700: var(--surface-300);
+  --color-luxury-600: var(--surface-300);
+  --color-luxury-500: var(--surface-300);
+  --color-luxury-400: var(--surface-200);
+  --color-luxury-300: var(--surface-200);
+  --color-luxury-200: var(--surface-100);
+  --color-luxury-100: var(--surface-200);
+  --color-luxury-50: var(--surface-300);
 
   --color-text-title: var(--text-title);
   --color-title: var(--text-title);
   --color-bg-overlay: var(--bg-overlay);
   --color-border-subtle: var(--border-subtle);
 
+  --color-zinc-50: var(--zinc-50);
+  --color-zinc-100: var(--zinc-100);
   --color-zinc-200: var(--zinc-200);
   --color-zinc-300: var(--zinc-300);
   --color-zinc-400: var(--zinc-400);
   --color-zinc-500: var(--zinc-500);
+  --color-zinc-800: var(--zinc-800);
+  --color-zinc-900: var(--zinc-900);
+  --color-zinc-950: var(--zinc-950);
 }
 
 :root {
@@ -66,10 +79,15 @@
   --bg-overlay: rgba(241, 245, 249, 0.8);
   --border-subtle: rgba(15, 23, 42, 0.1);
 
+  --zinc-50: #f8fafc;
+  --zinc-100: #f1f5f9;
   --zinc-200: #64748b;
   --zinc-300: #475569;
   --zinc-400: #334155;
   --zinc-500: #1e293b;
+  --zinc-800: #1e293b;
+  --zinc-900: #0f172a;
+  --zinc-950: #020617;
 }
 
 :root.dark {
@@ -91,10 +109,15 @@
   --bg-overlay: rgba(15, 23, 42, 0.6);
   --border-subtle: rgba(16, 185, 129, 0.15);
 
+  --zinc-50: #f8fafc;
+  --zinc-100: #f1f5f9;
   --zinc-200: #e2e8f0;
   --zinc-300: #cbd5e1;
   --zinc-400: #94a3b8;
   --zinc-500: #64748b;
+  --zinc-800: #1e293b;
+  --zinc-900: #0f172a;
+  --zinc-950: #020617;
 }
 
 :root.light {
@@ -116,10 +139,21 @@
   --bg-overlay: rgba(241, 245, 249, 0.8);
   --border-subtle: rgba(15, 23, 42, 0.1);
 
+  --zinc-50: #f8fafc;
+  --zinc-100: #f1f5f9;
   --zinc-200: #64748b;
   --zinc-300: #475569;
   --zinc-400: #334155;
   --zinc-500: #1e293b;
+  --zinc-800: #e2e8f0;
+  --zinc-900: #f1f5f9;
+  --zinc-950: #f8fafc;
+  --color-white: #020617;
+  --color-zinc-50: #020617;
+  --color-zinc-100: #0f172a;
+  --color-zinc-950: #f8fafc;
+  --color-zinc-900: #f1f5f9;
+  --color-zinc-800: #e2e8f0;
 }
 
 @layer base {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { localDb } from '../services/localDb';
 import { ExtractedTransaction } from '../services/nim';
 import { FolderLock, Download, FileArchive, CheckCircle2, ShieldCheck, FileText, Calendar, Search, Filter, Hash, ExternalLink, Activity, ArrowUpRight, ArrowDownRight, Tag } from 'lucide-react';
 import JSZip from 'jszip';
@@ -24,27 +24,27 @@ export function VaultPage() {
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) return;
+    const user = auth.currentUser;
+    if (!user) return;
 
-      const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-          setCompany(docSnap.data());
-        }
-      });
-
-      const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-      const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-        const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtractedTransaction));
-        setTransactions(txs);
-      });
-
-      return () => {
-        unsubscribeCompany();
-        unsubscribeSnapshot();
-      };
+    const unsubCompany = localDb.subscribe('companies', user.uid, (list) => {
+      if (list.length > 0) setCompany(list[0] as any);
+      else {
+        // Fallback: try Firestore once (legacy profiles)
+        import('firebase/firestore').then(({ doc, getDoc }) => {
+          getDoc(doc(db, 'companies', user.uid)).then(snap => {
+            if (snap.exists()) setCompany(snap.data());
+          });
+        });
+      }
     });
-    return () => unsubscribeAuth();
+    const unsubTx = localDb.subscribe('transactions', user.uid, (list) => {
+      setTransactions(list as ExtractedTransaction[]);
+    });
+    return () => {
+      unsubCompany();
+      unsubTx();
+    };
   }, []);
 
   const years = Array.from(new Set(transactions.map(t => new Date(t.date).getFullYear()))).sort((a, b) => b - a);

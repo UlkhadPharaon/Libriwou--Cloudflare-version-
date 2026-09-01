@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { localDb } from '../services/localDb';
 import { UploadCloud, CheckCircle2, AlertCircle, ArrowRightLeft, FileSpreadsheet, Search, Filter, Wallet, ArrowUpRight, ArrowDownRight, Tag, Save, Check, X, Building2 } from 'lucide-react';
 import Papa from 'papaparse';
 import { ExtractedTransaction } from '../services/nim';
@@ -163,27 +164,27 @@ export function BankPage() {
   const saveManualCategorization = async (txId: string) => {
     const tx = bankTransactions.find(t => t.id === txId);
     if (!tx || !user) return;
-
-    // Create a new transaction in Firebase representing this bank line
-    try {
-      const docRef = await addDoc(collection(db, 'transactions'), {
+    const payload = {
         userId: user.uid,
-        date: tx.date || new Date().toISOString(),
+        date: tx.date || new Date().toISOString().split('T')[0],
         category: selectedCategory,
         vendorName: 'Banque - ' + tx.description,
+        amountExclTax: Math.abs(tx.amount),
         amountInclTax: Math.abs(tx.amount),
+        tvaAmount: 0,
         type: tx.amount > 0 ? 'INCOME' : 'EXPENSE',
         source: 'BANK_IMPORT',
         status: 'validated',
         fecValid: true,
         createdAt: new Date().toISOString()
-      });
-
-      // Update local state to mark as reconciled
+      };
+    try {
+      const localId = localDb.add('transactions', payload);
+      let firestoreId = localId;
+      try { const docRef = await addDoc(collection(db, 'transactions'), payload); firestoreId = docRef.id; } catch(e){ console.warn('[Bank] Firestore sync failed (local preserved):', e); }
       setBankTransactions(prev => prev.map(t => 
-        t.id === txId ? { ...t, status: 'reconciled', systemCategoryId: docRef.id, systemCategoryName: selectedCategory } : t
+        t.id === txId ? { ...t, status: 'reconciled', systemCategoryId: firestoreId, systemCategoryName: selectedCategory } : t
       ));
-      
       setCategorizingTx(null);
     } catch(e) {
       console.error("Error creating bank transaction", e);

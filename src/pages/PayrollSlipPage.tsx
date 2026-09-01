@@ -59,14 +59,12 @@ export function PayrollSlipPage() {
 
   const handleSave = async () => {
     if (!user || !calc || !employeeName) return;
-    
-    // Create transaction of type 'PAYROLL'
-    try {
-      await addDoc(collection(db, 'transactions'), {
+    const payload = {
         userId: user.uid,
         type: 'PAYROLL',
         amountExclTax: calc.totalEmployerCost,
         vatAmount: 0,
+        tvaAmount: 0,
         amountInclTax: calc.totalEmployerCost,
         date: new Date().toISOString().split('T')[0],
         category: 'Salaires & Charges',
@@ -81,7 +79,11 @@ export function PayrollSlipPage() {
           iuts: calc.iuts
         },
         createdAt: new Date().toISOString()
-      });
+      };
+    try {
+      const { localDb } = await import('../services/localDb');
+      localDb.add('transactions', payload);
+      try { await addDoc(collection(db, 'transactions'), payload); } catch(e){ console.warn('[PayrollSlip] Firestore sync failed (local preserved):', e); }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'transactions');
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { localDb } from '../services/localDb';
 import { Building2, Download, Scale, CheckCircle2, AlertCircle, Presentation, ArrowRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle } from 'docx';
@@ -40,22 +41,23 @@ export function BilanPage() {
   }, [company?.sector]);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const user = auth.currentUser;
+    if (!user) return;
 
-    const unsubscribeCompany = onSnapshot(doc(db, 'companies', auth.currentUser.uid), (docSnap) => {
-        if (docSnap.exists()) setCompany(docSnap.data());
+    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
+        if (list.length > 0) setCompany(list[0] as any);
+        else {
+          // fallback to Firestore once for legacy data
+          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
+            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
+          });
+        }
     });
 
-    const q = query(
-      collection(db, 'transactions'),
-      where('userId', '==', auth.currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = localDb.subscribe('transactions', user.uid, (txs) => {
       const generatedEntries: any[] = [];
       
-      snapshot.docs.forEach((doc) => {
-        const data = doc.data();
+      txs.forEach((data: any) => {
         const amountExclTax = Number(data.amountExclTax) || 0;
         const amountInclTax = Number(data.amountInclTax) || amountExclTax;
 
@@ -132,12 +134,7 @@ export function BilanPage() {
   const resultatNet = totalProduits - totalCharges;
   bilan.passif.capitauxPropres += Math.abs(resultatNet); 
   
-  // Add some fake fixed assets if it's completely empty just to show the beautiful UI structure
-  if (bilan.actif.immobilise === 0 && bilan.actif.circulant === 0 && bilan.passif.dettes === 0) {
-      bilan.actif.circulant += 1250000;
-      bilan.passif.dettes += 850000;
-      bilan.passif.capitauxPropres += 400000;
-  }
+    // (Fausse donnée supprimée)
 
   const sector = company?.sector?.toLowerCase() || '';
   const isCommercial = sector.includes('commerce') || sector.includes('vente') || sector.includes('boutique') || sector.includes('marchandise') || sector.includes('négoce') || sector.includes('retail');

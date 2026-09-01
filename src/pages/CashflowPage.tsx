@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth } from '../firebase';
+import { localDb } from '../services/localDb';
 import { TrendingUp, TrendingDown, Activity, AlertCircle, Sparkles } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
@@ -10,16 +10,13 @@ export function CashflowPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) return;
-      const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-      const unsubscribeTx = onSnapshot(q, (snapshot) => {
-        setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setLoading(false);
-      });
-      return () => unsubscribeTx();
+    const user = auth.currentUser;
+    if (!user) return;
+    const unsub = localDb.subscribe('transactions', user.uid, (list) => {
+      setTransactions(list as any[]);
+      setLoading(false);
     });
-    return () => unsubscribeAuth();
+    return () => unsub();
   }, []);
 
   const chartData = useMemo(() => {

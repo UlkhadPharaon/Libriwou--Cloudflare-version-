@@ -107,7 +107,7 @@ export function LandingPage() {
                 L'assistant super simple pour les entrepreneurs d'Afrique de l'Ouest
               </div>
               
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif tracking-tight leading-tight mb-6 text-white max-w-3xl">
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif tracking-tight leading-tight mb-6 text-title max-w-3xl">
                 Votre gestion d'entreprise sans <br/>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-gold-100 to-gold-400">aucune prise de tête.</span>
               </h1>

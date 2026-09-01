@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Plus, DollarSign, User, Phone, Mail, Calendar, Briefcase, FileText, MoreVertical, Edit2, Trash2 } from 'lucide-react';
 import { db } from '../firebase';
+import { localDb } from '../services/localDb';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
@@ -83,11 +84,12 @@ export function PayrollPage() {
   const payEmployee = async (emp: Employee) => {
     if (!user) return;
     if (confirm(`Enregistrer le paiement du salaire de ${emp.name} (${emp.salary.toLocaleString('fr-FR')} FCFA) pour ce mois ?`)) {
-      await addDoc(collection(db, 'transactions'), {
+      const payload = {
         userId: user.uid,
         type: 'EXPENSE',
         amountExclTax: emp.salary,
         vatAmount: 0,
+        tvaAmount: 0,
         amountInclTax: emp.salary,
         date: new Date().toISOString().split('T')[0],
         category: 'Salaires & Charges',
@@ -95,7 +97,9 @@ export function PayrollPage() {
         vendorName: emp.name,
         fecValid: true,
         createdAt: new Date().toISOString()
-      });
+      };
+      localDb.add('transactions', payload);
+      try { await addDoc(collection(db, 'transactions'), payload); } catch(e){ console.warn('[Payroll] Firestore sync failed (local preserved):', e); }
       alert(`Salaire enregistré dans vos dépenses comptables (661 Charges de personnel) !`);
     }
   };

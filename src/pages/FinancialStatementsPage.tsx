@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { localDb } from '../services/localDb';
 import { BookOpen, FileText, Download, Building2, BarChart3, Presentation, Filter, Table2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -25,25 +26,24 @@ export function FinancialStatementsPage() {
   const [company, setCompany] = useState<any>(null);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const user = auth.currentUser;
+    if (!user) return;
 
-    // Fetch company info for headers
-    const unsubscribeCompany = onSnapshot(doc(db, 'companies', auth.currentUser.uid), (docSnap) => {
-        if (docSnap.exists()) setCompany(docSnap.data());
+    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
+        if (list.length > 0) setCompany(list[0] as any);
+        else {
+          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
+            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
+          });
+        }
     });
 
-    const q = query(
-      collection(db, 'transactions'),
-      where('userId', '==', auth.currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = localDb.subscribe('transactions', user.uid, (txs) => {
       const generatedEntries: JournalEntry[] = [];
       
-      snapshot.docs.forEach((doc) => {
-        const data = doc.data();
+      txs.forEach((data: any) => {
         const dateObj = new Date(data.date);
-        const ref = data.fecFingerprint ? data.fecFingerprint.substring(0, 8).toUpperCase() : doc.id.substring(0, 8).toUpperCase();
+        const ref = data.fecFingerprint ? data.fecFingerprint.substring(0, 8).toUpperCase() : (data.id || '').substring(0, 8).toUpperCase();
         
         let desc = data.description || '';
         let vendor = data.vendorName || 'Tiers inconnu';
@@ -54,10 +54,10 @@ export function FinancialStatementsPage() {
 
         if (data.type === 'INCOME') {
           generatedEntries.push({
-            id: `${doc.id}-debit`, date: data.date, accountNumber: '521', description: fullDesc, debit: amountInclTax, credit: null, timestamp: dateObj, ref
+            id: `${data.id}-debit`, date: data.date, accountNumber: '521', description: fullDesc, debit: amountInclTax, credit: null, timestamp: dateObj, ref
           });
           generatedEntries.push({
-            id: `${doc.id}-credit`, date: data.date, accountNumber: '701', description: fullDesc, debit: null, credit: amountInclTax, timestamp: dateObj, ref
+            id: `${data.id}-credit`, date: data.date, accountNumber: '701', description: fullDesc, debit: null, credit: amountInclTax, timestamp: dateObj, ref
           });
         } else if (data.type === 'EXPENSE') {
           let chargeAccount = '605';
@@ -66,7 +66,7 @@ export function FinancialStatementsPage() {
           else if (data.category?.includes('Impôts')) chargeAccount = '641';
           
           generatedEntries.push({
-            id: `${doc.id}-debit`, date: data.date, accountNumber: chargeAccount, description: fullDesc, debit: amountInclTax, credit: null, timestamp: dateObj, ref
+            id: `${data.id}-debit`, date: data.date, accountNumber: chargeAccount, description: fullDesc, debit: amountInclTax, credit: null, timestamp: dateObj, ref
           });
 
           let creditAccount = '401';
@@ -74,7 +74,7 @@ export function FinancialStatementsPage() {
           else if (data.paymentMethod === 'Cash') creditAccount = '571';
           
           generatedEntries.push({
-            id: `${doc.id}-credit`, date: data.date, accountNumber: creditAccount, description: fullDesc, debit: null, credit: amountInclTax, timestamp: dateObj, ref
+            id: `${data.id}-credit`, date: data.date, accountNumber: creditAccount, description: fullDesc, debit: null, credit: amountInclTax, timestamp: dateObj, ref
           });
         }
       });
