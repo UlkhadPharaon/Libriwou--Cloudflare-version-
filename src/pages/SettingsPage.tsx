@@ -66,9 +66,9 @@ export function SettingsPage() {
       if (company.autoTaxRegime) {
          updatedRegime = determineTaxRegime(company.estimatedRevenue || 0);
       }
-      const companyToUpdate = { ...company, taxRegime: updatedRegime };
-      
-      await updateDoc(doc(db, 'companies', user.uid), companyToUpdate);
+      const companyToUpdate = { ...company, taxRegime: updatedRegime, userId: user.uid, id: user.uid };
+      try { const { localDb } = await import('../services/localDb'); localDb.update('companies', user.uid, companyToUpdate); if (!localDb.get('companies', user.uid)) localDb.add('companies', companyToUpdate); } catch(e){ console.warn("[Settings] local save failed", e); }
+      try { await updateDoc(doc(db, 'companies', user.uid), companyToUpdate); } catch(e){ console.warn("[Settings] Firestore sync failed (local preserved)", e); }
       setCompany(companyToUpdate);
       setToast({ message: 'Informations mises à jour avec succès', type: 'success' });
     } catch (e) {

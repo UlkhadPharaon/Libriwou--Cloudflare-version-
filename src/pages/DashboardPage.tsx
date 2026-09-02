@@ -112,15 +112,13 @@ export function DashboardPage() {
   useEffect(() => {
     if (!user) return;
 
-    const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-      if (docSnap.exists()) {
-        const compData = docSnap.data();
+    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
+      const compData = (list[0] as any) || null;
+      if (compData) {
         setCompany(compData);
-        
         const today = new Date();
         const year = today.getFullYear();
         const month = today.getMonth();
-        
         if (compData.taxRegime === 'RSI' || compData.taxRegime === 'RNI') {
           const nextTva = new Date(year, month, 20);
           if (today.getDate() > 20) nextTva.setMonth(month + 1);
@@ -130,6 +128,18 @@ export function DashboardPage() {
           if (today.getDate() > 10) nextCme.setMonth(month + 1);
           setNextDeadline({ title: 'Paiement CME', date: nextCme, priority: 'MEDIUM' });
         }
+      } else {
+        import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
+          getDoc(fdoc(db, 'companies', user.uid)).then(s => {
+            if (s.exists()) {
+              const d = s.data() as any; setCompany(d);
+              try { if(!localDb.get('companies', user.uid)) localDb.add('companies', { id: user.uid, ...d }); } catch {}
+              const today = new Date(); const year = today.getFullYear(); const month = today.getMonth();
+              if (d.taxRegime === 'RSI' || d.taxRegime === 'RNI') { const n = new Date(year, month, 20); if (today.getDate() > 20) n.setMonth(month+1); setNextDeadline({ title: 'Déclaration TVA (G50)', date: n, priority: 'HIGH' }); }
+              else if (d.taxRegime === 'CME') { const n = new Date(year, month, 10); if (today.getDate() > 10) n.setMonth(month+1); setNextDeadline({ title: 'Paiement CME', date: n, priority: 'MEDIUM' }); }
+            }
+          });
+        });
       }
     });
 

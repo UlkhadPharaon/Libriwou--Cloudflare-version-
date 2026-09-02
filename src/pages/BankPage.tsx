@@ -53,20 +53,15 @@ export function BankPage() {
 
   useEffect(() => {
     if (!user) return;
-
-    const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-    const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-      const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtractedTransaction));
-      setScannedTransactions(txs);
-      
+    // Local-first transactions — instant & offline
+    const unsub = localDb.subscribe('transactions', user.uid, (txs) => {
+      setScannedTransactions(txs as ExtractedTransaction[]);
       if (bankTransactions.length > 0) {
-        // Only run auto-reconciliation on transactions that have not been manually categorized/reconciled
-        reconcileTransactions(bankTransactions, txs, false);
+        reconcileTransactions(bankTransactions, txs as ExtractedTransaction[], false);
       }
     });
-
-    return () => unsubscribeSnapshot();
-  }, [user, bankTransactions.length]);
+    return () => unsub();
+  }, [user]); // remove bankTransactions.length dep to avoid loop; reconciliation triggered via setScannedTransactions or import
 
   const handleCurrencyChange = (curr: string) => {
     setImportCurrency(curr);

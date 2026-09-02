@@ -64,10 +64,10 @@ export function BilanPage() {
         if (data.type === 'INCOME') {
           generatedEntries.push({ accountNumber: '521', debit: amountInclTax, credit: 0 });
           generatedEntries.push({ accountNumber: '701', debit: 0, credit: amountInclTax });
-        } else if (data.type === 'EXPENSE') {
-           // simplified expense routing
+        } else if (data.type === 'EXPENSE' || data.type === 'PAYROLL') {
+           // PAYROLL = charges de personnel (66x)
           let chargeAccount = '605';
-          if (data.category?.includes('Salaires')) chargeAccount = '661';
+          if (data.type === 'PAYROLL' || data.category?.includes('Salaires')) chargeAccount = '661';
           else if (data.category?.includes('Loyer')) chargeAccount = '622';
           
           let creditAccount = '401';

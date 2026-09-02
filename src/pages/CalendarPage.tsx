@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, collection, query, where, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { localDb } from '../services/localDb';
 import { Calendar as CalendarIcon, AlertCircle, Clock, CheckCircle2, Wallet, ChevronRight, Info, ShieldCheck, PieChart, Activity, HelpCircle } from 'lucide-react';
 import { calculateTaxes, TaxCalculation } from '../lib/tax-rules';
 import { cn } from '../lib/utils';
@@ -28,37 +29,48 @@ export function CalendarPage() {
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) return;
-      const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-          const compData = docSnap.data();
-          setCompany(compData);
-          generateDeadlines(compData);
+    const user = auth.currentUser;
+    const apply = (compData: any, txs: any[]) => {
+      if (compData) { setCompany(compData); generateDeadlines(compData); }
+      const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
+      let rev = 0; let exp = 0;
+      txs.forEach((t:any) => {
+        if (t.date < startOfYear) return;
+        if (t.type === 'INCOME') rev += Number(t.amountExclTax || 0);
+        if (t.type === 'EXPENSE') exp += Number(t.amountExclTax || 0);
+      });
+      setYtdData({ revenue: rev, expenses: exp });
+      setTaxData(calculateTaxes(rev, exp, (compData?.taxRegime || company?.taxRegime || 'CME') as any));
+    };
+    if (user) {
+      const unsubComp = localDb.subscribe('companies', user.uid, (list) => {
+        const comp = (list[0] as any) || null;
+        if (comp) apply(comp, localDb.getAll('transactions', user.uid));
+        else {
+          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
+            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) apply(s.data() as any, localDb.getAll('transactions', user.uid)); });
+          });
         }
       });
-
-      const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
-      const q = query(collection(db, 'transactions'), where('userId', '==', user.uid), where('date', '>=', startOfYear));
-      const unsubscribeTx = onSnapshot(q, (snapshot) => {
-        let rev = 0;
-        let exp = 0;
-        snapshot.forEach(doc => {
-          const t = doc.data();
-          if (t.type === 'INCOME') rev += Number(t.amountExclTax || 0);
-          if (t.type === 'EXPENSE') exp += Number(t.amountExclTax || 0);
-        });
-        
-        setYtdData({ revenue: rev, expenses: exp });
-        setTaxData(calculateTaxes(rev, exp, company?.taxRegime || 'CME'));
+      const unsubTx = localDb.subscribe('transactions', user.uid, (txs) => {
+        const comp = (localDb.getAll('companies', user.uid)[0] as any) || company;
+        apply(comp, txs as any[]);
       });
-
-      return () => {
-        unsubscribeCompany();
-        unsubscribeTx();
-      };
+      return () => { unsubComp(); unsubTx(); };
+    }
+    const unsubAuth = auth.onAuthStateChanged((u) => {
+      if (!u) return;
+      const unsubComp = localDb.subscribe('companies', u.uid, (list) => {
+        if (list.length>0) { const c=list[0] as any; setCompany(c); generateDeadlines(c); }
+      });
+      const unsubTx = localDb.subscribe('transactions', u.uid, (txs) => {
+        let rev=0,exp=0; const sy=new Date(new Date().getFullYear(),0,1).toISOString();
+        (txs as any[]).forEach((t:any)=>{ if(t.date<sy) return; if(t.type==='INCOME') rev+=Number(t.amountExclTax||0); if(t.type==='EXPENSE') exp+=Number(t.amountExclTax||0); });
+        setYtdData({revenue:rev,expenses:exp}); setTaxData(calculateTaxes(rev,exp,(company?.taxRegime||'CME') as any));
+      });
+      return () => { unsubComp(); unsubTx(); };
     });
-    return () => unsubscribeAuth();
+    return () => unsubAuth();
   }, [company?.taxRegime]);
 
   const generateDeadlines = (compData: any) => {

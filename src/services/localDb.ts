@@ -110,6 +110,9 @@ class LocalDatabase {
     }
   }
 
+  // All collections used in the app — V2 adds employees & others that were missing (critical fix: nothing saves if store missing)
+  private readonly ALL_COLLECTIONS = ['transactions', 'inventory', 'stock_movements', 'companies', 'employees', 'conversations', 'projects', 'agent_skills', 'simulations', 'company_references', 'bug_reports', 'intelligence_feed'] as const;
+
   private initIndexedDB() {
     if (typeof window === 'undefined' || !window.indexedDB) {
       console.warn("IndexedDB not supported in this environment, falling back to localStorage");
@@ -117,7 +120,8 @@ class LocalDatabase {
       return;
     }
 
-    const request = window.indexedDB.open("LibriwouoLocalDB", 1);
+    // Version 2: adds employees + 7 other collections. Bump triggers onupgradeneeded for existing users.
+    const request = window.indexedDB.open("LibriwouoLocalDB", 2);
 
     request.onerror = (e) => {
       console.error("IndexedDB blocked or failed to load. Falling back to localStorage.", e);
@@ -131,17 +135,31 @@ class LocalDatabase {
         this.onReadyCallbacks.forEach(cb => cb());
         this.onReadyCallbacks = [];
       });
+      // Defensive: if some stores still missing (e.g. downgrade race), create via fallback
+      this.ensureAllStores();
     };
 
     request.onupgradeneeded = (e: any) => {
       const db = e.target.result;
-      const collections = ['transactions', 'inventory', 'stock_movements', 'companies'];
+      const collections: string[] = [...this.ALL_COLLECTIONS];
       collections.forEach(col => {
         if (!db.objectStoreNames.contains(col)) {
-          db.createObjectStore(col, { keyPath: "id" });
+          try { db.createObjectStore(col, { keyPath: "id" }); console.log("[localDb] created store", col); } catch(err){ console.warn("[localDb] failed create store", col, err); }
         }
       });
     };
+
+    request.onblocked = () => console.warn("[localDb] IndexedDB upgrade blocked — close other tabs");
+  }
+
+  private ensureAllStores(): void {
+    if (!this.dbInstance) return;
+    try {
+      const missing = [...this.ALL_COLLECTIONS].filter(c => !this.dbInstance!.objectStoreNames.contains(c));
+      if (missing.length > 0) {
+        console.warn("[localDb] missing stores detected (upgrade needed):", missing, "— falling back to localStorage for them until next reload");
+      }
+    } catch {}
   }
 
   // Request high durability persistence from the browser
@@ -164,7 +182,7 @@ class LocalDatabase {
   }
 
   private async loadAllFromIndexedDB() {
-    const collections = ['transactions', 'inventory', 'stock_movements', 'companies'];
+    const collections: string[] = [...this.ALL_COLLECTIONS];
     for (const col of collections) {
       await this.loadFromIndexedDBToCache(col);
     }
@@ -198,7 +216,7 @@ class LocalDatabase {
   }
 
   private loadAllFromLocalStorage() {
-    const collections = ['transactions', 'inventory', 'stock_movements', 'companies'];
+    const collections: string[] = [...this.ALL_COLLECTIONS];
     collections.forEach(col => {
       try {
         const key = `neocompta_local_${col}`;
@@ -228,18 +246,27 @@ class LocalDatabase {
   }
 
   private async saveToIndexedDB(collectionName: string, id: string, item: any): Promise<void> {
-    if (!this.dbInstance) {
-      // Fallback to localStorage
+    // Always persist to localStorage as backup (survives IDB missing store)
+    try {
       const current = this.ramCache.get(collectionName) || [];
       localStorage.setItem(`neocompta_local_${collectionName}`, JSON.stringify(current));
-      return;
-    }
+    } catch {}
+    if (!this.dbInstance) return;
+    // If store doesn't exist (old DB version), skip IDB and keep LS as source of truth
+    try {
+      if (!this.dbInstance.objectStoreNames.contains(collectionName)) {
+        console.warn(`[localDb] store "${collectionName}" missing in IDB — using localStorage fallback. Will be created on next version bump.`);
+        return;
+      }
+    } catch { return; }
     return new Promise((resolve) => {
       try {
         const tx = this.dbInstance!.transaction(collectionName, "readwrite");
         const store = tx.objectStore(collectionName);
-        store.put(item);
+        const req = store.put(item);
+        req.onerror = () => { console.warn("[localDb] put onerror", req.error); resolve(); };
         tx.oncomplete = () => resolve();
+        tx.onerror = () => { console.warn("[localDb] tx onerror", (tx as any).error); resolve(); };
       } catch (err) {
         console.error("IndexedDB put error", err);
         resolve();
@@ -248,17 +275,19 @@ class LocalDatabase {
   }
 
   private async removeFromIndexedDB(collectionName: string, id: string): Promise<void> {
-    if (!this.dbInstance) {
+    try {
       const current = this.ramCache.get(collectionName) || [];
       localStorage.setItem(`neocompta_local_${collectionName}`, JSON.stringify(current));
-      return;
-    }
+    } catch {}
+    if (!this.dbInstance) return;
+    try { if (!this.dbInstance.objectStoreNames.contains(collectionName)) return; } catch { return; }
     return new Promise((resolve) => {
       try {
         const tx = this.dbInstance!.transaction(collectionName, "readwrite");
         const store = tx.objectStore(collectionName);
         store.delete(id);
         tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
       } catch (err) {
         resolve();
       }
@@ -277,13 +306,11 @@ class LocalDatabase {
     current.push(newItem);
     this.ramCache.set(collection, current);
     
-    this.saveToIndexedDB(collection, id, newItem).then(() => {
-      this.notify(collection);
-      // Notify other tabs
-      try {
-        localStorage.setItem(`neocompta_local_sync_${collection}`, Date.now().toString());
-      } catch(_) {}
-    });
+    // Immediate UI update — don't wait for IDB
+    this.notify(collection);
+    try { localStorage.setItem(`neocompta_local_sync_${collection}`, Date.now().toString()); } catch(_) {}
+    // Persist async (LS + IDB)
+    this.saveToIndexedDB(collection, id, newItem).catch(()=>{});
 
     return id;
   }
@@ -362,34 +389,31 @@ class LocalDatabase {
 
   // --- Secure Multi-Device cloud sync (Zero-Knowledge) ---
   public async exportLocalPayload(userId: string): Promise<string> {
-    const payload = {
-      transactions: this.getAll('transactions', userId),
-      inventory: this.getAll('inventory', userId),
-      stock_movements: this.getAll('stock_movements', userId),
-      companies: this.getAll('companies', userId)
-    };
+    const payload: Record<string, any[]> = {};
+    for (const col of this.ALL_COLLECTIONS) {
+      try { payload[col] = this.getAll(col, userId); } catch { payload[col] = []; }
+    }
     return JSON.stringify(payload);
   }
 
   public async importLocalPayload(payloadString: string, userId: string): Promise<void> {
     try {
       const payload = JSON.parse(payloadString);
-      const collections = ['transactions', 'inventory', 'stock_movements', 'companies'];
+      const collections: string[] = [...this.ALL_COLLECTIONS];
       
       for (const col of collections) {
         if (Array.isArray(payload[col])) {
-          // Empty local collection
           const current = this.ramCache.get(col) || [];
           const preserved = current.filter((i: any) => i.userId !== userId);
           const newItems = payload[col].map((i: any) => ({ ...i, userId }));
           
           this.ramCache.set(col, [...preserved, ...newItems]);
           
-          // Save to IndexedDB
           for (const item of newItems) {
             await this.saveToIndexedDB(col, item.id, item);
           }
           this.notify(col);
+          try { localStorage.setItem(`neocompta_local_sync_${col}`, Date.now().toString()); } catch {}
         }
       }
     } catch (e) {

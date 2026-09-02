@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { localDb } from '../services/localDb';
 import { FileText, Download } from 'lucide-react';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import { saveAs } from 'file-saver';
@@ -10,16 +11,26 @@ export function DocumentsPage() {
   const [company, setCompany] = useState<any>(null);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) return;
-      const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-          setCompany(docSnap.data());
+    const user = auth.currentUser;
+    if (user) {
+      const unsub = localDb.subscribe('companies', user.uid, (list) => {
+        if (list.length > 0) setCompany(list[0] as any);
+        else {
+          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
+            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
+          });
         }
       });
-      return () => unsubscribeCompany();
+      return () => unsub();
+    }
+    const unsubAuth = auth.onAuthStateChanged((u) => {
+      if (!u) return;
+      const unsub = localDb.subscribe('companies', u.uid, (list) => {
+        if (list.length > 0) setCompany(list[0] as any);
+      });
+      return () => unsub();
     });
-    return () => unsubscribeAuth();
+    return () => unsubAuth();
   }, []);
 
   const generateDocument = async (docInfo: any) => {

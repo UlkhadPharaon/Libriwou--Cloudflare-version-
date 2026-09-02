@@ -52,20 +52,42 @@ function CompanionAvatar({ className = '', animated = false }: { className?: str
   );
 }
 
+// Global keep-alive for chat: survive route change without Context refactor
+const getHubPersist = () => {
+  try {
+    const g: any = (typeof window !== 'undefined' ? window : {}) as any;
+    if (!g.__HUB_PERSIST__) g.__HUB_PERSIST__ = { messages: null as any, isTyping: false, ctrl: null as AbortController|null };
+    return g.__HUB_PERSIST__ as { messages: any; isTyping: boolean; ctrl: AbortController|null };
+  } catch { return { messages: null, isTyping: false, ctrl: null } as any; }
+};
+
 export function HubPage() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQueryHandled = useRef(false);
 
-  const [messages, setMessages] = useState<Message[]>([{
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const gp = getHubPersist();
+      if (gp.messages && Array.isArray(gp.messages) && gp.messages.length > 1) return gp.messages;
+    } catch {}
+    try {
+      const cached = localStorage.getItem('hub_messages_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 1) return parsed;
+      }
+    } catch {}
+    return [{
     id: 'welcome',
     role: 'model',
     text: "Bonjour. Je suis votre IA. Comment puis-je vous aider aujourd'hui ? Vous pouvez me poser des questions fiscales ou me transmettre vos factures pour saisie."
-  }]);
+  }];
+  });
   const [input, setInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(() => { try { return !!getHubPersist().isTyping; } catch { return false; } });
   const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -142,21 +164,41 @@ export function HubPage() {
   const isWelcomeScreen = messages.length === 1 && !currentConversationId;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // Persist messages to survive page navigation refresh / crash — restores conversation even if Firestore lags
+  useEffect(() => {
+    try {
+      if (messages.length > 1) {
+        localStorage.setItem('hub_messages_cache', JSON.stringify(messages.slice(-50)));
+        getHubPersist().messages = messages;
+      }
+    } catch {}
+  }, [messages]);
+
+  // Keep AI typing alive across navigation: store in global + sessionStorage so Badge remains
+  useEffect(() => {
+    try { sessionStorage.setItem('hub_isTyping', String(isTyping)); getHubPersist().isTyping = isTyping; } catch {}
+  }, [isTyping]);
+
   useEffect(() => {
     if (!user) return;
 
-    const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-      if (docSnap.exists()) setCompany(docSnap.data());
-    }, (err) => {
-      console.error("Error fetching company:", err);
+    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
+      if (list.length > 0) setCompany(list[0] as any);
+      else {
+        // One-time cloud hydration
+        import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
+          getDoc(fdoc(db, 'companies', user.uid)).then(s => {
+            if (s.exists()) {
+              const d = s.data() as any; setCompany(d);
+              try { if(!localDb.get('companies', user.uid)) localDb.add('companies', { id: user.uid, ...d }); } catch {}
+            }
+          });
+        });
+      }
     });
 
-    const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-    const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-      const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtractedTransaction));
-      setTransactions(txs);
-    }, (err) => {
-      console.error("Error fetching transactions:", err);
+    const unsubscribeSnapshot = localDb.subscribe('transactions', user.uid, (txs) => {
+      setTransactions(txs as ExtractedTransaction[]);
     });
 
     const convQ = query(collection(db, 'conversations'), where('userId', '==', user.uid), orderBy('updatedAt', 'desc'));
@@ -241,19 +283,24 @@ export function HubPage() {
     }
     
     if (name === 'update_company_profile') {
-      const companyRef = doc(db, 'companies', user.uid);
-      await updateDoc(companyRef, args);
-      setCompany((prev: any) => ({ ...prev, ...args }));
+      try { localDb.update('companies', user.uid, { id: user.uid, ...args }); if(!localDb.get('companies', user.uid)) localDb.add('companies', { id: user.uid, userId: user.uid, ...args }); setCompany((prev: any) => ({ ...prev, ...args })); } catch(e){ console.warn("[Hub] local company update failed", e); }
+      try { const companyRef = doc(db, 'companies', user.uid); await updateDoc(companyRef, args); } catch(e){ console.warn("[Hub] cloud company update failed (local preserved)", e); }
       return { success: true, updatedFields: args };
     }
     
     if (name === 'delete_transaction') {
+      // Local-first delete
+      try { localDb.delete('transactions', args.transactionId); } catch {}
       const txRef = doc(db, 'transactions', args.transactionId);
-      const txSnap = await getDoc(txRef);
-      if (txSnap.exists() && txSnap.data().userId === user.uid) {
-        await deleteDoc(txRef);
-        return { success: true };
-      }
+      try {
+        const txSnap = await getDoc(txRef);
+        if (txSnap.exists() && txSnap.data().userId === user.uid) {
+          await deleteDoc(txRef);
+          return { success: true };
+        }
+      } catch {}
+      // If not found in cloud but deleted locally, still success
+      if (localDb.get('transactions', args.transactionId) === null) return { success: true };
       throw new Error("Transaction non trouvée ou accès refusé");
     }
 
@@ -262,6 +309,10 @@ export function HubPage() {
     }
 
     if (name === 'fetch_all_transactions') {
+      try {
+        const local = localDb.getAll('transactions', user.uid);
+        if (local.length > 0) return { success: true, transactions: local };
+      } catch {}
       const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
       const snapshot = await getDocs(q);
       const allTxs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -269,18 +320,21 @@ export function HubPage() {
     }
 
     if (name === 'fetch_all_invoices') {
+      try { const local = localDb.getAll('transactions', user.uid).filter((t:any)=> t.type==='INCOME'); if (local.length>0) return { success: true, invoices: local }; } catch {}
       const q = query(collection(db, 'invoices'), where('userId', '==', user.uid));
       const snapshot = await getDocs(q);
       return { success: true, invoices: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) };
     }
 
     if (name === 'fetch_inventory_items') {
+      try { const local = localDb.getAll('inventory', user.uid); if (local.length>0) return { success: true, inventory: local }; } catch {}
       const q = query(collection(db, 'inventory'), where('userId', '==', user.uid));
       const snapshot = await getDocs(q);
       return { success: true, inventory: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) };
     }
 
     if (name === 'fetch_employee_list') {
+      try { const local = localDb.getAll('employees', user.uid); if (local.length>0) return { success: true, employees: local }; } catch {}
       const q = query(collection(db, 'employees'), where('userId', '==', user.uid));
       const snapshot = await getDocs(q);
       return { success: true, employees: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) };
@@ -320,7 +374,9 @@ export function HubPage() {
     // Clear input and files immediately
     setInput('');
     setSelectedFiles([]);
+    try { const c = new AbortController(); getHubPersist().ctrl = c; } catch {}
     setIsTyping(true);
+    getHubPersist().isTyping = true;
     if (textareaRef.current) {
       textareaRef.current.style.height = '40px';
     }
@@ -416,7 +472,7 @@ export function HubPage() {
         }
     }
     
-    setIsTyping(false);
+    setIsTyping(false); try { getHubPersist().isTyping = false; getHubPersist().ctrl = null; } catch {}
   };
 
   useEffect(() => {
@@ -450,7 +506,7 @@ export function HubPage() {
       'application/pdf': ['.pdf'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']
     },
-    maxFiles: 1
+    maxFiles: 5
   });
 
   const startNewChat = () => {

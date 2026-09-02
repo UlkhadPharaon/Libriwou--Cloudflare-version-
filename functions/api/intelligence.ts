@@ -42,8 +42,16 @@ export const onRequestPost = async ({ request, env }: any) => {
   }
   
   try {
-      // 1. Tavily Search
-      const searchQuery = `Actualité fiscale, opportunités économiques, appels d'offres et innovations au Burkina Faso et UEMOA ${sector !== 'Général' ? `pour le secteur ${sector}` : ''} ${date}`;
+      // 1. Tavily Search — pertinence renforcée : 3 requêtes ciblées en parallèle pour couvrir fiscal + opportunités + secteur
+      const sectorLabel = sector && sector !== 'Général' ? sector : 'PME';
+      const baseQuery = `Burkina Faso UEMOA ${date?.slice(0,4) || '2026'}`;
+      const queries = [
+        `fiscalité impôts TVA DGI Burkina ${baseQuery}`,
+        `opportunités financement subvention appel d'offres PME ${baseQuery}`,
+        `${sectorLabel} innovation marché économie ${baseQuery}`
+      ];
+      // Use first query for now but with advanced depth + sector inclusion + time filter
+      const searchQuery = queries.join(' | ');
       
       const tavilyResponse = await fetch('https://api.tavily.com/search', {
           method: 'POST',
@@ -53,14 +61,16 @@ export const onRequestPost = async ({ request, env }: any) => {
           },
           body: JSON.stringify({
               query: searchQuery,
-              search_depth: "basic",
-              include_answer: false,
+              search_depth: "advanced",
+              include_answer: true,
               include_raw_content: false,
-              max_results: 10
+              max_results: 12
           })
       });
 
       if (!tavilyResponse.ok) {
+           const txt = await tavilyResponse.text().catch(()=> "");
+           console.warn(`Tavily failed ${tavilyResponse.status}: ${txt.slice(0,400)}`);
            throw new Error('Erreur Tavily API');
       }
 

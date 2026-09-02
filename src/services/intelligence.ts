@@ -44,6 +44,15 @@ export async function fetchDailyIntelligence(sector: string = 'Général', force
     }
 
     // 2. CRON Simulation: Data doesn't exist yet for today. We fetch it via our backend API.
+    // 2. CRON Simulation: localStorage fast-cache (survives Firestore outage)
+    try {
+      const lsKey = `intel_${today}_${sector}`;
+      const cached = localStorage.getItem(lsKey);
+      if (!force && cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as IntelligenceNews[];
+      }
+    } catch {}
     const intelRef = collection(db, 'intelligence_feed');
     const response = await fetch('/api/intelligence', {
         method: 'POST',
@@ -78,15 +87,23 @@ export async function fetchDailyIntelligence(sector: string = 'Général', force
     if (!generatedNews || !Array.isArray(generatedNews)) return [];
 
     // 3. Save the results to Firestore (so the next 999 users won't pay for the AI call today)
-    const promises = generatedNews.map(async (item) => {
-      const docRef = await addDoc(intelRef, {
-        ...item,
-        createdAt: Timestamp.now()
+    try {
+      const promises = generatedNews.map(async (item) => {
+        const docRef = await addDoc(intelRef, {
+          ...item,
+          createdAt: Timestamp.now()
+        });
+        return { ...item, id: docRef.id };
       });
-      return { ...item, id: docRef.id };
-    });
-
-    return await Promise.all(promises);
+      const saved = await Promise.all(promises);
+      try { localStorage.setItem(`intel_${today}_${sector}`, JSON.stringify(saved)); } catch {}
+      return saved;
+    } catch (e) {
+      // Firestore write failed (offline/permissions) but we still have fresh news — cache locally and return
+      console.warn("[Intelligence] Firestore cache write failed, serving from API directly", e);
+      try { localStorage.setItem(`intel_${today}_${sector}`, JSON.stringify(generatedNews)); } catch {}
+      return generatedNews as IntelligenceNews[];
+    }
 
   } catch (error) {
     if (error instanceof Error) {
@@ -94,8 +111,26 @@ export async function fetchDailyIntelligence(sector: string = 'Général', force
     } else {
         console.warn("Intelligence fetch warning:", error);
     }
-    
-    // Return gracefully empty array rather than failing loudly (UI will simply show no news or fallbacks)
+    // Try localStorage stale fallback before giving up
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const lsKey = `intel_${today}_${sector}`;
+      const cached = localStorage.getItem(lsKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as IntelligenceNews[];
+      }
+      // try any recent intel (last 3 days)
+      for (let d=1; d<=3; d++) {
+        const dt = new Date(); dt.setDate(dt.getDate()-d);
+        const k = `intel_${dt.toISOString().split('T')[0]}_${sector}`;
+        const c = localStorage.getItem(k);
+        if (c) {
+          const p = JSON.parse(c);
+          if (Array.isArray(p) && p.length>0) return p as IntelligenceNews[];
+        }
+      }
+    } catch {}
     return [];
   }
 }

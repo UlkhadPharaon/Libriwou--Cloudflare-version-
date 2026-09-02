@@ -21,20 +21,22 @@ export function CashflowPage() {
 
   const chartData = useMemo(() => {
     if (!transactions.length) return [];
-    
-    // Group by month
-    const monthlyMap = new Map<string, { income: number, expense: number }>();
+    // Group by YYYY-MM chronologically (fixes bug where Jan 2024 + Jan 2025 merged and order lost)
+    const monthlyMap = new Map<string, { income: number, expense: number; label: string; sortKey: string }>();
     transactions.forEach(tx => {
       const d = new Date(tx.date);
-      const m = d.toLocaleString('fr-FR', { month: 'short' });
-      const current = monthlyMap.get(m) || { income: 0, expense: 0 };
-      if (tx.type === 'INCOME') current.income += tx.amountExclTax;
-      if (tx.type === 'EXPENSE') current.expense += tx.amountExclTax;
-      monthlyMap.set(m, current);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const label = d.toLocaleString('fr-FR', { month: 'short', year: '2-digit' });
+      const current = monthlyMap.get(key) || { income: 0, expense: 0, label, sortKey: key };
+      if (tx.type === 'INCOME') current.income += Number(tx.amountExclTax || 0);
+      if (tx.type === 'EXPENSE' || tx.type === 'PAYROLL') current.expense += Number(tx.amountExclTax || 0);
+      monthlyMap.set(key, current);
     });
-
-    const historical = Array.from(monthlyMap.entries()).map(([month, data]) => ({
-      month,
+    const historical = Array.from(monthlyMap.entries())
+      .sort((a,b)=> a[0].localeCompare(b[0]))
+      .map(([_, data]) => ({
+      month: data.label,
       solde: data.income - data.expense,
       isProjection: false
     }));

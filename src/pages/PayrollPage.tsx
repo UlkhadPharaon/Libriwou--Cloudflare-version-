@@ -40,26 +40,42 @@ export function PayrollPage() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'employees'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      setEmployees(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
+    // Local-first: instant UI, survives offline. Firestore as optional cloud sync if available.
+    const unsubLocal = localDb.subscribe('employees', user.uid, (list) => {
+      setEmployees(list as Employee[]);
     });
-    return () => unsub();
+    // Best-effort cloud sync: if Firestore has newer data, it will still merge via localDb on other path, but we try to hydrate once
+    let unsubCloud: (()=>void)|null = null;
+    try {
+      const q = query(collection(db, 'employees'), where('userId', '==', user.uid));
+      unsubCloud = onSnapshot(q, (snap) => {
+        const cloud = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
+        // Merge into localDb if cloud has items local doesn't (one-way hydration)
+        const localIds = new Set((localDb.getAll('employees', user.uid) as any[]).map(e=>e.id));
+        let added = 0;
+        for (const e of cloud) if (!localIds.has(e.id)) { localDb.add('employees', e); added++; }
+        if (added>0) console.log(`[Payroll] hydrated ${added} employees from cloud`);
+      }, (err)=> console.warn("[Payroll] cloud snapshot failed (offline ok)", err));
+    } catch(e){ console.warn("[Payroll] cloud subscribe failed", e); }
+    return () => { unsubLocal(); if(unsubCloud) unsubCloud(); };
   }, [user]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !formData.name) return;
-
-    if (editingId) {
-      await updateDoc(doc(db, 'employees', editingId), { ...formData, salary: Number(formData.salary) || 0 });
-    } else {
-      await addDoc(collection(db, 'employees'), {
-        userId: user.uid,
-        ...formData,
-        salary: Number(formData.salary) || 0
-      });
-    }
+    const payload = { userId: user.uid, ...formData, salary: Number(formData.salary) || 0 };
+    try {
+      if (editingId) {
+        localDb.update('employees', editingId, payload);
+        try { await updateDoc(doc(db, 'employees', editingId), payload); } catch(e){ console.warn("[Payroll] Firestore update failed (local preserved)", e); }
+      } else {
+        const localId = localDb.add('employees', payload);
+        try { const ref = await addDoc(collection(db, 'employees'), payload as any); // keep cloud id aligned if possible
+          // If cloud generated different id, keep local id as source of truth — no-op
+          void ref; void localId;
+        } catch(e){ console.warn("[Payroll] Firestore add failed (local preserved)", e); }
+      }
+    } catch(err){ console.error("[Payroll] save failed", err); }
     closeForm();
   };
 
@@ -77,7 +93,8 @@ export function PayrollPage() {
 
   const deleteEmp = async (id: string) => {
     if (confirm('Souhaitez-vous vraiment retirer ce collaborateur ?')) {
-      await deleteDoc(doc(db, 'employees', id));
+      localDb.delete('employees', id);
+      try { await deleteDoc(doc(db, 'employees', id)); } catch(e){ console.warn("[Payroll] Firestore delete failed (local preserved)", e); }
     }
   };
 

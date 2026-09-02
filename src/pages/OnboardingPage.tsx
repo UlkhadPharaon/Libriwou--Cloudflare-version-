@@ -53,7 +53,7 @@ export function OnboardingPage() {
       const revenue = parseFloat(formData.estimatedRevenue) || 0;
       const taxRegime = determineTaxRegime(revenue);
 
-      await setDoc(doc(db, 'companies', user.uid), {
+      const companyPayload = {
         userId: user.uid,
         companyName: formData.companyName,
         ifu: formData.ifu,
@@ -68,7 +68,10 @@ export function OnboardingPage() {
           daysBefore: 7
         },
         createdAt: new Date().toISOString()
-      });
+      };
+      // Local-first: ensure instant availability offline + survive Firestore outage
+      try { const { localDb } = await import('../services/localDb'); localDb.add('companies', { id: user.uid, ...companyPayload }); } catch(e){ console.warn("[Onboarding] localDb save failed", e); }
+      await setDoc(doc(db, 'companies', user.uid), companyPayload);
 
       // Update global auth state immediately
       await refreshProfile();
