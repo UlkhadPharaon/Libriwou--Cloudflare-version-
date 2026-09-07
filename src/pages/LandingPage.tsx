@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { loginWithGoogle } from '../firebase';
+import { loginWithGoogle, loginAsBetaTesteur } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { 
@@ -18,7 +18,10 @@ import {
   Check,
   Zap,
   ShieldCheck,
-  Coins
+  Coins,
+  FlaskConical,
+  Beaker,
+  Loader2
 } from 'lucide-react';
 import { SplashScreen } from '../components/SplashScreen';
 import { NeoLogo } from '../components/NeoLogo';
@@ -26,6 +29,7 @@ import { NeoLogo } from '../components/NeoLogo';
 export function LandingPage() {
   const { user, loading, hasProfile } = useAuth();
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [isBetaLoading, setIsBetaLoading] = useState(false);
   const [isAnnual, setIsAnnual] = useState<boolean>(false);
 
   const handleLogin = async () => {
@@ -35,6 +39,20 @@ export function LandingPage() {
     } catch (error: any) {
       console.error("Login failed:", error);
       setLoginError(error.message || "Une erreur est survenue lors de la connexion.");
+    }
+  };
+
+  const handleBetaLogin = async () => {
+    try {
+      setLoginError(null);
+      setIsBetaLoading(true);
+      await loginAsBetaTesteur();
+      // onAuthStateChanged will redirect automatically via the guards below
+    } catch (error: any) {
+      console.error("Beta login failed:", error);
+      setLoginError(error.message || "Impossible de se connecter en mode Bêta-Testeur.");
+    } finally {
+      setIsBetaLoading(false);
     }
   };
 
@@ -80,15 +98,26 @@ export function LandingPage() {
         className="flex items-center justify-between px-6 py-4 md:px-16 border-b border-white/5 bg-luxury-950/80 backdrop-blur-md sticky top-0 z-50"
       >
         <div className="flex items-center gap-3">
-           <NeoLogo size="sm" showText={false} />
-           <span className="font-serif font-semibold text-lg tracking-tight text-white">Libriwouô</span>
+            <NeoLogo size="sm" showText={false} />
+            <span className="font-serif font-semibold text-lg tracking-tight text-white">Libriwouô</span>
+         </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={handleBetaLogin}
+            disabled={isBetaLoading}
+            className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 rounded-full hover:bg-emerald-500/15 transition-all disabled:opacity-50"
+            title="Connexion instantanée sans Google — compte démo pré-configuré"
+          >
+            {isBetaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FlaskConical className="w-3.5 h-3.5" />}
+            Accès Bêta
+          </button>
+          <button 
+            onClick={handleLogin}
+            className="px-5 py-2 text-xs sm:text-sm font-semibold bg-white text-zinc-950 rounded-full hover:bg-zinc-200 transition-all shadow-sm"
+          >
+            Me connecter
+          </button>
         </div>
-        <button 
-          onClick={handleLogin}
-          className="px-5 py-2 text-xs sm:text-sm font-semibold bg-white text-zinc-950 rounded-full hover:bg-zinc-200 transition-all shadow-sm"
-        >
-          Me connecter
-        </button>
       </motion.nav>
 
       <main className="flex-1 flex flex-col">
@@ -139,6 +168,54 @@ export function LandingPage() {
                 </button>
               </div>
               <p className="mt-4 text-xs text-zinc-500">Sans carte bancaire • Totalement conforme aux règles locales</p>
+
+              {/* Beta Tester — One-click, no Google / no email */}
+              <div className="mt-8 w-full max-w-md">
+                <div className="relative flex items-center gap-3 my-2">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium">ou</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+
+                <div className="mt-4 p-4 sm:p-5 rounded-2xl bg-emerald-500/[0.06] border border-dashed border-emerald-500/25 text-left backdrop-blur-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                      <Beaker className="w-4.5 h-4.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                        Accès Bêta-Testeur
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-zinc-950 text-[10px] font-black tracking-wider uppercase">Sans inscription</span>
+                      </h3>
+                      <p className="text-xs text-zinc-400 leading-relaxed mt-1">
+                        Pour testeurs & retours : connexion instantanée en 1 clic. Aucun mail, aucun compte Google.
+                        Vous arrivez directement dans un <span className="text-zinc-200 font-medium">compte démo pré-configuré</span> (entreprise, paramètres, données d'exemple).
+                      </p>
+                      <button
+                        onClick={handleBetaLogin}
+                        disabled={isBetaLoading}
+                        className="mt-3.5 w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-500 text-zinc-950 text-sm font-bold hover:bg-emerald-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+                      >
+                        {isBetaLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Connexion...
+                          </>
+                        ) : (
+                          <>
+                            <FlaskConical className="w-4 h-4" />
+                            Entrer en mode Bêta-Testeur
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                      <p className="mt-2 text-[11px] text-zinc-500 text-center">
+                        Compte partagé de démonstration • Idéal pour donner un feedback rapide
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </motion.div>
         </section>
 

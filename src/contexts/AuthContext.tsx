@@ -3,11 +3,13 @@ import { auth, db } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
+import { isBetaEmail } from '../lib/betaConfig';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   hasProfile: boolean | null;
+  isBeta: boolean;
   refreshProfile: () => Promise<void>;
   setHasProfile: (value: boolean | null) => void;
 }
@@ -18,19 +20,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
+  const isBeta = isBetaEmail(user?.email);
+
+  const checkHasProfile = async (uid: string): Promise<boolean> => {
+    const path = `companies/${uid}`;
+    try {
+      const profileDoc = await getDoc(doc(db, 'companies', uid));
+      if (profileDoc.exists()) return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      // fall through to localDb fallback
+    }
+    // Offline / not yet synced fallback — localDb has the beta seed immediately
+    try {
+      const { localDb } = await import('../services/localDb');
+      const local = localDb.get('companies', uid);
+      if (local) return true;
+    } catch {}
+    return false;
+  };
 
   const refreshProfile = async () => {
     if (auth.currentUser) {
-      const path = `companies/${auth.currentUser.uid}`;
-      try {
-        console.log("Fetching profile for:", auth.currentUser.uid);
-        const profileDoc = await getDoc(doc(db, 'companies', auth.currentUser.uid));
-        console.log("Profile exists:", profileDoc.exists());
-        setHasProfile(profileDoc.exists());
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, path);
-        setHasProfile(false);
-      }
+      const exists = await checkHasProfile(auth.currentUser.uid);
+      setHasProfile(exists);
     }
   };
 
@@ -39,16 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(currentUser);
       console.log("Auth State Changed. User:", currentUser?.uid);
       if (currentUser) {
-        const path = `companies/${currentUser.uid}`;
-        try {
-          console.log("Checking profile for:", currentUser.uid);
-          const profileDoc = await getDoc(doc(db, 'companies', currentUser.uid));
-          console.log("Profile exists:", profileDoc.exists());
-          setHasProfile(profileDoc.exists());
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, path);
-          setHasProfile(false);
-        }
+        const exists = await checkHasProfile(currentUser.uid);
+        setHasProfile(exists);
       } else {
         setHasProfile(null);
       }
@@ -59,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, hasProfile, refreshProfile, setHasProfile }}>
+    <AuthContext.Provider value={{ user, loading, hasProfile, isBeta, refreshProfile, setHasProfile }}>
       {children}
     </AuthContext.Provider>
   );

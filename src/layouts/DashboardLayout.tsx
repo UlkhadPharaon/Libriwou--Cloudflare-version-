@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Wallet, LayoutDashboard, Inbox, LogOut, Menu, X, FileText, Calendar, Landmark, Calculator, Receipt, FolderLock, Bell, Settings, Sparkles, ShieldAlert, Activity, Users, ShoppingCart, Package, BookOpen, FileSpreadsheet, Scale, Library, BrainCircuit } from 'lucide-react';
+import { Wallet, LayoutDashboard, Inbox, LogOut, Menu, X, FileText, Calendar, Landmark, Calculator, Receipt, FolderLock, Bell, Settings, Sparkles, ShieldAlert, Activity, Users, ShoppingCart, Package, BookOpen, FileSpreadsheet, Scale, Library, BrainCircuit, FlaskConical } from 'lucide-react';
 import { logout } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
@@ -15,6 +15,7 @@ export function DashboardLayout() {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { deadlines } = useTaxNotifications();
+  const { isBeta } = useAuth();
 
   const navItems = [
     { path: '/dashboard', label: 'Vue d\'ensemble', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -39,19 +40,27 @@ export function DashboardLayout() {
   ];
 
   const SidebarContent = () => {
-    const { user } = useAuth();
+    const { user, isBeta: isBetaSidebar } = useAuth();
     const isAdmin = user?.email === 'ulrichtapsoba2009@gmail.com';
 
     return (
       <>
-        <div className="p-6 flex items-center justify-between neo-logo-container">
-          <NeoLogo size="sm" showText={false} />
-          <button 
-            className="md:hidden p-2 text-gold-500/60 hover:text-gold-400"
-            onClick={() => setIsMobileMenuOpen(false)}
-          >
-            <X className="w-5 h-5" />
-          </button>
+        <div className="p-6 flex flex-col gap-3 neo-logo-container">
+          <div className="flex items-center justify-between">
+            <NeoLogo size="sm" showText={false} />
+            <button 
+              className="md:hidden p-2 text-gold-500/60 hover:text-gold-400"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          {isBetaSidebar && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-black tracking-widest uppercase w-fit">
+              <FlaskConical className="w-3 h-3" />
+              Mode Bêta-Testeur
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 space-y-1 mt-4 pb-4">
@@ -107,12 +116,17 @@ export function DashboardLayout() {
         </nav>
 
         <div className="p-4 border-t border-border-subtle flex flex-col gap-2">
+          {isBetaSidebar && (
+            <div className="px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-[11px] text-emerald-300/80 leading-relaxed">
+              Compte démo partagé — idéal pour tester sans risque.
+            </div>
+          )}
           <button 
             onClick={logout}
             className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           >
             <LogOut className="w-4 h-4" />
-            Déconnexion
+            {isBetaSidebar ? "Quitter la démo" : "Déconnexion"}
           </button>
         </div>
     </>
@@ -156,6 +170,16 @@ export function DashboardLayout() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
+        {isBeta && (
+          <div className="mx-4 mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 flex items-center gap-3">
+            <FlaskConical className="w-5 h-5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold leading-none">Mode Bêta-Testeur — Compte démo partagé</p>
+              <p className="text-xs opacity-80 mt-1">Vous naviguez dans la démo pré-configurée. Vos modifications sont visibles par les autres testeurs. Merci pour vos retours !</p>
+            </div>
+            <button onClick={logout} className="hidden sm:inline-flex px-3 py-1.5 rounded-lg bg-emerald-500 text-zinc-950 text-xs font-bold hover:bg-emerald-400 transition-colors shrink-0">Quitter la démo</button>
+          </div>
+        )}
         {deadlines.length > 0 && (
           <div className="mx-4 mt-4 p-4 rounded-xl bg-gold-500/10 border border-border-subtle text-gold-200 flex items-center gap-3">
             <Bell className="w-5 h-5" />

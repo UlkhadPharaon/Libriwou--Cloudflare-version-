@@ -10,6 +10,15 @@ service cloud.firestore {
     // Phase 3: Primitives & Helpers
     function isSignedIn() { return request.auth != null; }
     function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    // Beta demo shared account — allowed without email_verified so one-click login works instantly
+    function isBeta() {
+      return isSignedIn() && (
+        request.auth.token.email == "beta@libriwouo.bf" ||
+        request.auth.token.email == "demo@libriwouo.bf" ||
+        request.auth.token.email == "beta.libriwouo@demo.local"
+      );
+    }
+    function isVerifiedOrBeta() { return isVerified() || isBeta(); }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
@@ -46,14 +55,14 @@ service cloud.firestore {
     match /companies/{userId} {
       allow list: if isAdmin();
       allow get: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && isValidCompany(incoming()) && isVerified();
+      allow create: if isOwner(userId) && isValidCompany(incoming()) && isVerifiedOrBeta();
       allow update: if isOwner(userId) && (
         // Action: Profile Update
         (incoming().diff(existing()).affectedKeys().hasOnly([
           'companyName', 'ifu', 'rccm', 'phone', 'email', 'address', 
           'legalStatus', 'sector', 'taxRegime', 'notificationSettings', 
           'aiCompanionName', 'currency', 'exchangeRate', 'estimatedRevenue',
-          'deadlines'
+          'deadlines', 'isBetaDemo', 'betaSeedVersion'
         ]))
       ) && isValidCompany(incoming());
       allow delete: if isOwner(userId) || isAdmin();
@@ -63,7 +72,7 @@ service cloud.firestore {
     match /transactions/{transactionId} {
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow get: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && isValidTransaction(incoming());
+      allow create: if isVerifiedOrBeta() && isValidTransaction(incoming());
       allow update: if isOwner(existing().userId) && isValidTransaction(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly([
           'type', 'date', 'amountExclTax', 'amountInclTax', 'tvaAmount', 'vatAmount',
@@ -80,7 +89,7 @@ service cloud.firestore {
     match /conversations/{conversationId} {
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow get: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && isValidConversation(incoming());
+      allow create: if isVerifiedOrBeta() && isValidConversation(incoming());
       allow update: if isOwner(existing().userId) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt', 'messages', 'projectId', 'isEphemeral'])
       );
@@ -91,7 +100,7 @@ service cloud.firestore {
     match /projects/{projectId} {
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow get: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && incoming().userId == request.auth.uid;
       allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
@@ -99,50 +108,75 @@ service cloud.firestore {
     // 5. Simulations, Inventory, Employees (Generic User Data)
     match /simulations/{id} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && incoming().userId == request.auth.uid;
       allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
     
     match /inventory/{id} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && incoming().userId == request.auth.uid;
       allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
     match /stock_movements/{id} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && incoming().userId == request.auth.uid;
       allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
     match /employees/{id} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && incoming().userId == request.auth.uid;
       allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
     match /company_references/{id} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && incoming().userId == request.auth.uid;
       allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
     match /agent_skills/{id} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isVerified() && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && incoming().userId == request.auth.uid;
       allow update: if isOwner(existing().userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
-    // 5. Bug Reports
+    // 5. Bug Reports / Feedback — organized for admin triage
+    function isValidFeedback(data) {
+      return data.userId == request.auth.uid
+        && data.message is string && data.message.size() >= 10 && data.message.size() <= 5000
+        && data.category in ['bug', 'idea', 'question', 'other']
+        && data.status in ['new', 'reviewed', 'resolved', 'archived']
+        && data.page is string
+        && data.url is string;
+    }
     match /bug_reports/{id} {
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-      allow read, delete: if isAdmin();
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && isValidFeedback(incoming());
+      allow read: if isAdmin() || isOwner(resource.data.userId);
+      // Admin triage workflow: status, category, notes
+      allow update: if isAdmin() && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'priority', 'resolvedAt'])
+        && incoming().status in ['new', 'reviewed', 'resolved', 'archived']
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 5b. Beta Feedback (alias — same shape, explicit for analytics)
+    match /beta_feedback/{id} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && isValidFeedback(incoming());
+      allow read: if isAdmin() || isOwner(resource.data.userId);
+      allow update: if isAdmin() && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'priority', 'resolvedAt'])
+        && incoming().status in ['new', 'reviewed', 'resolved', 'archived']
+      );
+      allow delete: if isAdmin();
     }
 
     // 6. Intelligence Feed (read-only for clients; writes must use a trusted backend)
@@ -154,13 +188,13 @@ service cloud.firestore {
     // 7. Invoices (Legacy or Future)
     match /invoices/{id} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow write: if isVerified() && (incoming().userId == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow write: if isVerifiedOrBeta() && (incoming().userId == request.auth.uid || resource.data.userId == request.auth.uid);
     }
     // 8. Encrypted Fiscal Vaults & Test
     match /encrypted_fiscal_vaults/{userId} {
       allow list: if isAdmin();
       allow get: if isOwner(userId) || isAdmin();
-      allow create: if isVerified() && isOwner(userId) && incoming().userId == request.auth.uid;
+      allow create: if isVerifiedOrBeta() && isOwner(userId) && incoming().userId == request.auth.uid;
       allow update: if isOwner(userId) && incoming().userId == request.auth.uid;
       allow delete: if isOwner(userId) || isAdmin();
     }
