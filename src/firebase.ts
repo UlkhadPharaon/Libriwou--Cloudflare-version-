@@ -44,7 +44,15 @@ export const loginAsBetaTesteur = async () => {
     await ensureBetaCompanySeed(cred.user.uid);
     return cred;
   } catch (error: any) {
-    // Provide actionable message for the common first-setup case: Firebase user not yet created.
+    // Provide actionable messages for the common first-setup cases
+    if (error?.code === 'auth/operation-not-allowed') {
+      console.error("[Beta Login] Email/Password provider is DISABLED in Firebase Console");
+      throw new Error(
+        `Connexion Bêta désactivée : le fournisseur "Email/Mot de passe" est coupé dans Firebase.` +
+        ` → Va dans Firebase Console > Authentication > Sign-in method > Active "Email/Password" (et "Email link" si présent),` +
+        ` puis crée l'utilisateur ${BETA_EMAIL}. Recharge la page et réessaie.`
+      );
+    }
     if (error?.code === 'auth/user-not-found' || error?.code === 'auth/invalid-credential') {
       console.error("[Beta Login] Demo account not found. Create it in Firebase Console:", BETA_EMAIL);
       throw new Error(
