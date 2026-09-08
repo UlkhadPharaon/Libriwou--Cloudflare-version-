@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Wallet, LayoutDashboard, Inbox, LogOut, Menu, X, FileText, Calendar, Landmark, Calculator, Receipt, FolderLock, Bell, Settings, Sparkles, ShieldAlert, Activity, Users, ShoppingCart, Package, BookOpen, FileSpreadsheet, Scale, Library, BrainCircuit, FlaskConical } from 'lucide-react';
 import { logout } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,36 +11,39 @@ import { BugReporterButton } from '../components/BugReporter';
 import { HelpCircle } from 'lucide-react';
 
 import { NeoLogo } from '../components/NeoLogo';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function DashboardLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { deadlines } = useTaxNotifications();
   const { isBeta } = useAuth();
 
   const navItems = [
-    { path: '/dashboard', label: 'Vue d\'ensemble', icon: <LayoutDashboard className="w-4 h-4" /> },
-    { path: '/hub', label: 'Assistant NEO (IA)', icon: <Sparkles className="w-4 h-4" /> },
-    { path: '/agent-skills', label: 'Compétences IA', icon: <BrainCircuit className="w-4 h-4" /> },
-    { path: '/expenses', label: 'Mes Dépenses', icon: <ShoppingCart className="w-4 h-4" /> },
-    { path: '/invoices', label: 'Mes Ventes & Factures', icon: <Receipt className="w-4 h-4" /> },
-    { path: '/inventory', label: 'Mon Stock (Catalogue)', icon: <Package className="w-4 h-4" /> },
-    { path: '/payroll', label: 'Mon Équipe', icon: <Users className="w-4 h-4" /> },
-    { path: '/cashflow', label: 'Mon Argent', icon: <Activity className="w-4 h-4" /> },
-    { path: '/bank', label: 'Ma Banque', icon: <Landmark className="w-4 h-4" /> },
-    { path: '/declarations', label: 'Mes Impôts (Déclarations)', icon: <FileSpreadsheet className="w-4 h-4" /> },
-    { path: '/financial-statements', label: 'Mes Rapports Simples', icon: <Calculator className="w-4 h-4" /> },
-    { path: '/bilan', label: 'Mon Bilan de l\'Année', icon: <Scale className="w-4 h-4" /> },
-    { path: '/documents', label: 'Mes Documents', icon: <FileText className="w-4 h-4" /> },
-    { path: '/references', label: 'Mes Modèles & Références', icon: <Library className="w-4 h-4" /> },
-    { path: '/journal', label: 'Mon Historique', icon: <BookOpen className="w-4 h-4" /> },
-    { path: '/calendar', label: 'Mon Calendrier', icon: <Calendar className="w-4 h-4" /> },
-    { path: '/simulator', label: 'Le Simulateur', icon: <Calculator className="w-4 h-4" /> },
-    { path: '/settings', label: 'Mes Réglages', icon: <Settings className="w-4 h-4" /> },
-    { path: '/vault', label: 'Mon Coffre-Fort', icon: <FolderLock className="w-4 h-4" /> },
+    { path: '/dashboard', label: t('nav.overview'), icon: <LayoutDashboard className="w-4 h-4" /> },
+    { path: '/hub', label: t('nav.assistant'), icon: <Sparkles className="w-4 h-4" /> },
+    { path: '/agent-skills', label: t('nav.aiSkills'), icon: <BrainCircuit className="w-4 h-4" /> },
+    { path: '/expenses', label: t('nav.expenses'), icon: <ShoppingCart className="w-4 h-4" /> },
+    { path: '/invoices', label: t('nav.invoices'), icon: <Receipt className="w-4 h-4" /> },
+    { path: '/inventory', label: t('nav.inventory'), icon: <Package className="w-4 h-4" /> },
+    { path: '/payroll', label: t('nav.team'), icon: <Users className="w-4 h-4" /> },
+    { path: '/cashflow', label: t('nav.cashflow'), icon: <Activity className="w-4 h-4" /> },
+    { path: '/bank', label: t('nav.bank'), icon: <Landmark className="w-4 h-4" /> },
+    { path: '/declarations', label: t('nav.taxes'), icon: <FileSpreadsheet className="w-4 h-4" /> },
+    { path: '/financial-statements', label: t('nav.reports'), icon: <Calculator className="w-4 h-4" /> },
+    { path: '/bilan', label: t('nav.bilan'), icon: <Scale className="w-4 h-4" /> },
+    { path: '/documents', label: t('nav.documents'), icon: <FileText className="w-4 h-4" /> },
+    { path: '/references', label: t('nav.references'), icon: <Library className="w-4 h-4" /> },
+    { path: '/journal', label: t('nav.journal'), icon: <BookOpen className="w-4 h-4" /> },
+    { path: '/calendar', label: t('nav.calendar'), icon: <Calendar className="w-4 h-4" /> },
+    { path: '/simulator', label: t('nav.simulator'), icon: <Calculator className="w-4 h-4" /> },
+    { path: '/settings', label: t('nav.settings'), icon: <Settings className="w-4 h-4" /> },
+    { path: '/vault', label: t('nav.vault'), icon: <FolderLock className="w-4 h-4" /> },
   ];
 
   const SidebarContent = () => {
+    const { t } = useTranslation();
     const { user, isBeta: isBetaSidebar } = useAuth();
     const isAdmin = user?.email === 'ulrichtapsoba2009@gmail.com';
 
@@ -58,7 +62,7 @@ export function DashboardLayout() {
           {isBetaSidebar && (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-black tracking-widest uppercase w-fit">
               <FlaskConical className="w-3 h-3" />
-              Mode Bêta-Testeur
+              {t('auth.betaSidebarBadge')}
             </div>
           )}
         </div>
@@ -109,16 +113,17 @@ export function DashboardLayout() {
                 )}
               >
                 <ShieldAlert className="w-4 h-4" />
-                Administration
+                {t('nav.admin')}
               </Link>
             </motion.div>
           )}
         </nav>
 
         <div className="p-4 border-t border-border-subtle flex flex-col gap-2">
+          <LanguageSwitcher variant="compact" />
           {isBetaSidebar && (
             <div className="px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-[11px] text-emerald-300/80 leading-relaxed">
-              Compte démo partagé — idéal pour tester sans risque.
+              {t('auth.betaSidebarHint')}
             </div>
           )}
           <button 
@@ -126,7 +131,7 @@ export function DashboardLayout() {
             className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           >
             <LogOut className="w-4 h-4" />
-            {isBetaSidebar ? "Quitter la démo" : "Déconnexion"}
+            {isBetaSidebar ? t('auth.logoutDemo') : t('auth.logout')}
           </button>
         </div>
     </>
@@ -137,7 +142,10 @@ export function DashboardLayout() {
     <div className="min-h-screen bg-transparent text-gold-100 flex flex-col md:flex-row font-sans">
       {/* Mobile Header */}
       <header className="md:hidden flex items-center justify-between p-4 border-b border-border-subtle bg-luxury-900/80 backdrop-blur-xl sticky top-0 z-20 neo-logo-container">
-        <NeoLogo size="sm" showText={false} />
+        <div className="flex items-center gap-2">
+          <NeoLogo size="sm" showText={false} />
+          <LanguageSwitcher variant="compact" />
+        </div>
         <button 
           onClick={() => setIsMobileMenuOpen(true)}
           className="p-2 text-gold-500/60 hover:text-gold-400"
@@ -174,16 +182,16 @@ export function DashboardLayout() {
           <div className="mx-4 mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 flex items-center gap-3">
             <FlaskConical className="w-5 h-5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold leading-none">Mode Bêta-Testeur — Compte démo partagé</p>
-              <p className="text-xs opacity-80 mt-1">Vous naviguez dans la démo pré-configurée. Vos modifications sont visibles par les autres testeurs. Merci pour vos retours !</p>
+              <p className="text-sm font-semibold leading-none">{t('auth.betaBannerTitle')}</p>
+              <p className="text-xs opacity-80 mt-1">{t('auth.betaBannerDesc')}</p>
             </div>
-            <button onClick={logout} className="hidden sm:inline-flex px-3 py-1.5 rounded-lg bg-emerald-500 text-zinc-950 text-xs font-bold hover:bg-emerald-400 transition-colors shrink-0">Quitter la démo</button>
+            <button onClick={logout} className="hidden sm:inline-flex px-3 py-1.5 rounded-lg bg-emerald-500 text-zinc-950 text-xs font-bold hover:bg-emerald-400 transition-colors shrink-0">{t('auth.logoutDemo')}</button>
           </div>
         )}
         {deadlines.length > 0 && (
           <div className="mx-4 mt-4 p-4 rounded-xl bg-gold-500/10 border border-border-subtle text-gold-200 flex items-center gap-3">
             <Bell className="w-5 h-5" />
-            <p className="text-sm font-sans">Attention : {deadlines.length} échéance(s) fiscale(s) approche(nt) !</p>
+            <p className="text-sm font-sans">{t('nav.deadlines', { count: deadlines.length })}</p>
           </div>
         )}
         <Outlet />

@@ -278,6 +278,17 @@ export async function sendChatMessage(
   enableThinking: boolean = false
 ): Promise<{ text: string, actions: any[] } | null> {
   try {
+    // Greeting fast-path: avoid calling the heavy reasoning model for "salut"
+    const trimmed = (newMessage || '').trim().toLowerCase();
+    const isGreeting = !file && !extractedText && history.length === 0 && /^(salut|bonjour|hello|hey|cc|yo|coucou|bjr|bonsoir)(\s+neo)?[!.\s]*$/i.test(trimmed);
+    if (isGreeting) {
+      const name = context?.companyName ? ` pour ${context.companyName}` : '';
+      return {
+        text: `Salut ! Je suis NEO, ton expert SYSCOHADA${name}. Comment puis-je t'aider aujourd'hui — un reçu à analyser, un point TVA, ou ton stock ?`,
+        actions: []
+      };
+    }
+
     const messages: any[] = [];
       if (context) {
         messages.push({
@@ -352,18 +363,31 @@ STYLE: Décisif, expert, autonome et en constante auto-amélioration. N'attends 
     const allActions: any[] = [];
     let assistantMessage: any = null;
 
-    // Reasoning Loop
-    for (let i = 0; i < 5; i++) { // Limit iterations to prevent infinite loops
-        const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                messages: conversationMessages,
-                tools,
-                stream: false,
-                enable_thinking: enableThinking
-            })
-        });
+    // Reasoning Loop — tightened to 3 max to avoid 15min on simple "salut"
+    for (let i = 0; i < 3; i++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 45000);
+        let response: Response;
+        try {
+          response = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  messages: conversationMessages,
+                  tools,
+                  stream: false,
+                  enable_thinking: enableThinking
+              }),
+              signal: controller.signal
+          });
+        } catch (e: any) {
+          clearTimeout(timeout);
+          if (e.name === 'AbortError') {
+            return { text: "Désolé, la réponse a pris trop de temps (>45s). Réessaie avec une question plus précise ou désactive le mode réflexion.", actions: allActions };
+          }
+          throw e;
+        }
+        clearTimeout(timeout);
 
         let data;
         try {

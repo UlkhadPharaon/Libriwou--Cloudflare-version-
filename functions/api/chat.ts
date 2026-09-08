@@ -43,12 +43,17 @@ export const onRequestPost = async ({ request, env }: any) => {
       });
     }
 
+    // Fast path: use lightning/nano instead of ...-reasoning (5-10x faster, fixes 15min on "salut")
+    const chatModel = (env as any).NVIDIA_CHAT_MODEL || "nvidia/nemotron-3-nano-4b-a3b";
+    // To restore reasoning explicitly: set env NVIDIA_CHAT_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+
     if (stream) {
       const streamOptions: any = {
-          model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+          model: chatModel,
           messages: finalMessages,
           tools,
-          temperature: 0.60,
+          temperature: 0.30,
+          max_tokens: 900,
           stream: true,
       };
       
@@ -74,10 +79,11 @@ export const onRequestPost = async ({ request, env }: any) => {
       });
     } else {
       const options: any = {
-          model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+          model: chatModel,
           messages: finalMessages,
           tools,
-          temperature: 0.60,
+          temperature: 0.30,
+          max_tokens: 900,
       };
       const response = await openai.chat.completions.create(options);
       return Response.json(response);

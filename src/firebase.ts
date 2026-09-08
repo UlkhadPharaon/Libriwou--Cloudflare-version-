@@ -44,21 +44,32 @@ export const loginAsBetaTesteur = async () => {
     await ensureBetaCompanySeed(cred.user.uid);
     return cred;
   } catch (error: any) {
-    // Provide actionable messages for the common first-setup cases
+    const lang = (() => {
+      try {
+        const s = localStorage.getItem('libriwouo_lang');
+        if (s) return s.slice(0,2).toLowerCase();
+        return navigator.language.toLowerCase().startsWith('en') ? 'en' : 'fr';
+      } catch { return 'fr'; }
+    })();
+    const isEn = lang === 'en';
     if (error?.code === 'auth/operation-not-allowed') {
       console.error("[Beta Login] Email/Password provider is DISABLED in Firebase Console");
       throw new Error(
-        `Connexion Bêta désactivée : le fournisseur "Email/Mot de passe" est coupé dans Firebase.` +
-        ` → Va dans Firebase Console > Authentication > Sign-in method > Active "Email/Password" (et "Email link" si présent),` +
-        ` puis crée l'utilisateur ${BETA_EMAIL}. Recharge la page et réessaie.`
+        isEn
+          ? `Beta login disabled: "Email/Password" provider is OFF in Firebase. → Open Firebase Console > Authentication > Sign-in method > Enable "Email/Password", then create user ${BETA_EMAIL}. Reload and try again.`
+          : `Connexion Bêta désactivée : le fournisseur "Email/Mot de passe" est coupé dans Firebase.` +
+            ` → Va dans Firebase Console > Authentication > Sign-in method > Active "Email/Password" (et "Email link" si présent),` +
+            ` puis crée l'utilisateur ${BETA_EMAIL}. Recharge la page et réessaie.`
       );
     }
     if (error?.code === 'auth/user-not-found' || error?.code === 'auth/invalid-credential') {
       console.error("[Beta Login] Demo account not found. Create it in Firebase Console:", BETA_EMAIL);
       throw new Error(
-        `Compte démo Bêta introuvable (${BETA_EMAIL}). ` +
-        `Crée ce compte dans Firebase Console > Authentication > Add user, puis réessaie. ` +
-        `Vérifie aussi VITE_BETA_EMAIL / VITE_BETA_PASSWORD.`
+        isEn
+          ? `Beta demo account not found (${BETA_EMAIL}). Create it in Firebase Console > Authentication > Add user, then try again. Check VITE_BETA_EMAIL / VITE_BETA_PASSWORD.`
+          : `Compte démo Bêta introuvable (${BETA_EMAIL}). ` +
+            `Crée ce compte dans Firebase Console > Authentication > Add user, puis réessaie. ` +
+            `Vérifie aussi VITE_BETA_EMAIL / VITE_BETA_PASSWORD.`
       );
     }
     console.error("Error signing in as beta testeur", error);

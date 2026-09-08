@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 import { loginWithGoogle, loginAsBetaTesteur } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
@@ -25,8 +26,10 @@ import {
 } from 'lucide-react';
 import { SplashScreen } from '../components/SplashScreen';
 import { NeoLogo } from '../components/NeoLogo';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function LandingPage() {
+  const { t } = useTranslation();
   const { user, loading, hasProfile } = useAuth();
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isBetaLoading, setIsBetaLoading] = useState(false);
@@ -38,7 +41,7 @@ export function LandingPage() {
       await loginWithGoogle();
     } catch (error: any) {
       console.error("Login failed:", error);
-      setLoginError(error.message || "Une erreur est survenue lors de la connexion.");
+      setLoginError(error.message || t('auth.loginError'));
     }
   };
 
@@ -47,10 +50,9 @@ export function LandingPage() {
       setLoginError(null);
       setIsBetaLoading(true);
       await loginAsBetaTesteur();
-      // onAuthStateChanged will redirect automatically via the guards below
     } catch (error: any) {
       console.error("Beta login failed:", error);
-      setLoginError(error.message || "Impossible de se connecter en mode Bêta-Testeur.");
+      setLoginError(error.message || t('auth.betaAccess') + ' — ' + t('auth.loginError'));
     } finally {
       setIsBetaLoading(false);
     }
@@ -58,7 +60,6 @@ export function LandingPage() {
 
   const getPrice = (monthlyPrice: number) => {
     if (isAnnual) {
-      // 15% de réduction
       return Math.round(monthlyPrice * 0.85);
     }
     return monthlyPrice;
@@ -102,20 +103,21 @@ export function LandingPage() {
             <span className="font-serif font-semibold text-lg tracking-tight text-white">Libriwouô</span>
          </div>
         <div className="flex items-center gap-2">
+          <LanguageSwitcher variant="compact" />
           <button 
             onClick={handleBetaLogin}
             disabled={isBetaLoading}
             className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 rounded-full hover:bg-emerald-500/15 transition-all disabled:opacity-50"
-            title="Connexion instantanée sans Google — compte démo pré-configuré"
+            title={t('auth.betaHint')}
           >
             {isBetaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FlaskConical className="w-3.5 h-3.5" />}
-            Accès Bêta
+            {t('auth.betaShort')}
           </button>
           <button 
             onClick={handleLogin}
             className="px-5 py-2 text-xs sm:text-sm font-semibold bg-white text-zinc-950 rounded-full hover:bg-zinc-200 transition-all shadow-sm"
           >
-            Me connecter
+            {t('auth.login')}
           </button>
         </div>
       </motion.nav>
@@ -133,16 +135,16 @@ export function LandingPage() {
             >
               <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-gold-400 text-xs font-medium tracking-wider uppercase mb-6">
                 <Sparkles className="w-3.5 h-3.5 text-gold-500" />
-                L'assistant super simple pour les entrepreneurs d'Afrique de l'Ouest
+                {t('landing.badge')}
               </div>
               
               <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif tracking-tight leading-tight mb-6 text-title max-w-3xl">
-                Votre gestion d'entreprise sans <br/>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-gold-100 to-gold-400">aucune prise de tête.</span>
+                {t('landing.heroTitle1')} <br/>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-gold-100 to-gold-400">{t('landing.heroTitle2')}</span>
               </h1>
               
               <p className="text-base sm:text-lg md:text-xl text-zinc-400 mb-8 max-w-2xl mx-auto leading-relaxed">
-                Pas besoin d'aimer les chiffres. Prenez vos reçus en photo, l'application range vos dépenses, prépare vos déclarations du Burkina & UEMOA et s'occupe de vos papiers.
+                {t('landing.heroSubtitle')}
               </p>
               
               {loginError && (
@@ -157,17 +159,17 @@ export function LandingPage() {
                   onClick={handleLogin}
                   className="group flex items-center justify-center gap-2 px-7 py-3.5 text-xs sm:text-sm font-semibold bg-gold-500 text-zinc-950 rounded-full hover:bg-gold-400 transition-all duration-300 w-full sm:w-auto"
                 >
-                  Démarrer gratuitement
+                  {t('landing.ctaStart')}
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                 </button>
                 <button 
                   onClick={handleLogin}
                   className="px-7 py-3.5 text-xs sm:text-sm font-semibold bg-white/5 text-white border border-white/10 rounded-full hover:bg-white/10 transition-all w-full sm:w-auto"
                 >
-                  Découvrir
+                  {t('landing.ctaDiscover')}
                 </button>
               </div>
-              <p className="mt-4 text-xs text-zinc-500">Sans carte bancaire • Totalement conforme aux règles locales</p>
+              <p className="mt-4 text-xs text-zinc-500">{t('landing.noCard')}</p>
 
               {/* Beta Tester — One-click, no Google / no email */}
               <div className="mt-8 w-full max-w-md">
@@ -184,12 +186,11 @@ export function LandingPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                        Accès Bêta-Testeur
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-zinc-950 text-[10px] font-black tracking-wider uppercase">Sans inscription</span>
+                        {t('auth.betaAccess')}
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-zinc-950 text-[10px] font-black tracking-wider uppercase">{t('auth.betaWithoutSignup')}</span>
                       </h3>
                       <p className="text-xs text-zinc-400 leading-relaxed mt-1">
-                        Pour testeurs & retours : connexion instantanée en 1 clic. Aucun mail, aucun compte Google.
-                        Vous arrivez directement dans un <span className="text-zinc-200 font-medium">compte démo pré-configuré</span> (entreprise, paramètres, données d'exemple).
+                        {t('auth.betaDescription')}
                       </p>
                       <button
                         onClick={handleBetaLogin}
@@ -199,18 +200,18 @@ export function LandingPage() {
                         {isBetaLoading ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            Connexion...
+                            {t('common.loading')}
                           </>
                         ) : (
                           <>
                             <FlaskConical className="w-4 h-4" />
-                            Entrer en mode Bêta-Testeur
+                            {t('auth.betaButton')}
                             <ArrowRight className="w-4 h-4" />
                           </>
                         )}
                       </button>
                       <p className="mt-2 text-[11px] text-zinc-500 text-center">
-                        Compte partagé de démonstration • Idéal pour donner un feedback rapide
+                        {t('auth.betaSharedInfo')}
                       </p>
                     </div>
                   </div>
@@ -223,8 +224,8 @@ export function LandingPage() {
         <section className="bg-luxury-900 border-y border-white/5 py-16 sm:py-24 px-6 overflow-hidden">
            <div className="max-w-5xl mx-auto">
               <div className="text-center mb-12 sm:mb-16">
-                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight mb-3.5 text-white">Pourquoi choisir Libriwouô ?</h2>
-                 <p className="text-sm sm:text-base text-zinc-400 max-w-xl mx-auto">Une application claire et zen, pensée pour ceux qui détestent la paperasse.</p>
+                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight mb-3.5 text-white">{t('landing.whyTitle')}</h2>
+                 <p className="text-sm sm:text-base text-zinc-400 max-w-xl mx-auto">{t('landing.whySubtitle')}</p>
               </div>
 
               <motion.div 
@@ -238,9 +239,9 @@ export function LandingPage() {
                     <div className="w-10 h-10 rounded-lg bg-gold-500/10 flex items-center justify-center text-gold-400 mb-5 border border-gold-500/20">
                        <HeartHandshake className="w-5 h-5" />
                     </div>
-                    <h3 className="text-base font-semibold text-white mb-2.5">Zéro stress administratif</h3>
+                    <h3 className="text-base font-semibold text-white mb-2.5">{t('landing.why1Title')}</h3>
                     <p className="text-sm text-zinc-400 leading-relaxed">
-                       Notre application surveille vos dates importantes et traduit les calculs complexes en informations simples (argent disponible, bénéfice, dépenses).
+                       {t('landing.why1Desc')}
                     </p>
                  </motion.div>
                  
@@ -248,9 +249,9 @@ export function LandingPage() {
                     <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-5 border border-emerald-500/20">
                        <BrainCircuit className="w-5 h-5" />
                     </div>
-                    <h3 className="text-base font-semibold text-white mb-2.5">Toujours en règle, sans effort</h3>
+                    <h3 className="text-base font-semibold text-white mb-2.5">{t('landing.why2Title')}</h3>
                     <p className="text-sm text-zinc-400 leading-relaxed">
-                       Toutes vos ventes et vos achats sont automatiquement rangés selon les normes en vigueur en Afrique de l'Ouest. Votre comptable n'aura plus rien à trier.
+                       {t('landing.why2Desc')}
                     </p>
                  </motion.div>
 
@@ -258,9 +259,9 @@ export function LandingPage() {
                     <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-5 border border-emerald-500/20">
                        <TrendingUp className="w-5 h-5" />
                     </div>
-                    <h3 className="text-base font-semibold text-white mb-2.5">Suivi en direct de votre poche</h3>
+                    <h3 className="text-base font-semibold text-white mb-2.5">{t('landing.why3Title')}</h3>
                     <p className="text-sm text-zinc-400 leading-relaxed">
-                       Ouvrez l'application et voyez directement combien vous avez gagné ce mois-ci, de manière visuelle et agréable, sur votre téléphone ou votre PC.
+                       {t('landing.why3Desc')}
                     </p>
                  </motion.div>
               </motion.div>
@@ -271,8 +272,8 @@ export function LandingPage() {
         <section className="py-20 sm:py-28 px-6 border-b border-white/5 overflow-hidden">
            <div className="max-w-4xl mx-auto">
               <div className="text-center mb-16">
-                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight mb-3.5 text-white">Tout ce dont vous avez besoin au même endroit</h2>
-                 <p className="text-sm sm:text-base text-zinc-400 max-w-xl mx-auto">Des outils simples qui fonctionnent parfaitement ensemble pour gérer votre activité.</p>
+                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight mb-3.5 text-white">{t('landing.featuresTitle')}</h2>
+                 <p className="text-sm sm:text-base text-zinc-400 max-w-xl mx-auto">{t('landing.featuresSubtitle')}</p>
               </div>
 
               <motion.div 
@@ -282,90 +283,84 @@ export function LandingPage() {
                 viewport={{ once: true, margin: "-100px" }}
                 className="grid grid-cols-1 md:grid-cols-2 gap-8"
               >
-                 {/* Feature 1 */}
                  <motion.div variants={itemVariants} className="p-7 bg-luxury-900 border border-white/5 rounded-2xl flex gap-4 hover:border-white/10 transition-all duration-300">
                     <div className="w-9 h-9 rounded-lg bg-gold-500/10 text-gold-400 flex items-center justify-center shrink-0 border border-gold-500/20">
                        <Camera className="w-5 h-5" />
                     </div>
                     <div>
-                       <h3 className="text-base font-semibold text-white mb-2">Scanner photo intelligent</h3>
+                       <h3 className="text-base font-semibold text-white mb-2">{t('landing.featScanTitle')}</h3>
                        <p className="text-sm text-zinc-400 leading-relaxed">
-                          Prenez simplement en photo vos reçus et tickets de caisse. Libriwouô lit le document tout seul, extrait les montants de TVA et range le tout en sécurité.
+                          {t('landing.featScanDesc')}
                        </p>
                     </div>
                  </motion.div>
 
-                 {/* Feature 2 */}
                  <motion.div variants={itemVariants} className="p-7 bg-luxury-900 border border-white/5 rounded-2xl flex gap-4 hover:border-white/10 transition-all duration-300">
                     <div className="w-9 h-9 rounded-lg bg-gold-500/10 text-gold-500 flex items-center justify-center shrink-0 border border-white/10">
                        <BrainCircuit className="w-5 h-5" />
                     </div>
                     <div>
-                       <h3 className="text-base font-semibold text-white mb-2">Conforme aux lois locales</h3>
+                       <h3 className="text-base font-semibold text-white mb-2">{t('landing.featCompliantTitle')}</h3>
                        <p className="text-sm text-zinc-400 leading-relaxed">
-                          La législation et les calculs pour le Burkina Faso et l'espace UEMOA (SYSCOHADA) sont inclus. Préparez en 1 clic vos données prêtes à envoyer pour vos déclarations sur e-SINTAX.
+                          {t('landing.featCompliantDesc')}
                        </p>
                     </div>
                  </motion.div>
 
-                 {/* Feature 3 */}
                  <motion.div variants={itemVariants} className="p-7 bg-luxury-900 border border-white/5 rounded-2xl flex gap-4 hover:border-white/10 transition-all duration-300">
                     <div className="w-9 h-9 rounded-lg bg-gold-500/10 text-gold-500 flex items-center justify-center shrink-0 border border-white/10">
                        <TrendingUp className="w-5 h-5" />
                     </div>
                     <div>
-                       <h3 className="text-base font-semibold text-white mb-2">Banque & Argent au clair</h3>
+                       <h3 className="text-base font-semibold text-white mb-2">{t('landing.featBankTitle')}</h3>
                        <p className="text-sm text-zinc-400 leading-relaxed">
-                          Importez facilement vos relevés bancaires pour les valider. Notre application vous montre à l'avance combien d'argent il vous restera sur votre compte le mois prochain.
+                          {t('landing.featBankDesc')}
                        </p>
                     </div>
                  </motion.div>
 
-                 {/* Feature 4 */}
                  <motion.div variants={itemVariants} className="p-7 bg-luxury-900 border border-white/5 rounded-2xl flex gap-4 hover:border-white/10 transition-all duration-300">
                     <div className="w-9 h-9 rounded-lg bg-gold-500/10 text-gold-500 flex items-center justify-center shrink-0 border border-white/10">
                        <Package className="w-5 h-5" />
                     </div>
                     <div>
-                       <h3 className="text-base font-semibold text-white mb-2">Gestion des stocks et des produits</h3>
+                       <h3 className="text-base font-semibold text-white mb-2">{t('landing.featStockTitle')}</h3>
                        <p className="text-sm text-zinc-400 leading-relaxed">
-                          Suivez l'état de vos articles et étiquetez vos produits de manière visuelle. Sachez où s'en va votre marchandise et évitez les ruptures ou les surplus.
+                          {t('landing.featStockDesc')}
                        </p>
                     </div>
                  </motion.div>
 
-                 {/* Feature 5 */}
                  <motion.div variants={itemVariants} className="p-7 bg-luxury-900 border border-white/5 rounded-2xl flex gap-4 hover:border-white/10 transition-all duration-300">
                     <div className="w-9 h-9 rounded-lg bg-gold-500/10 text-gold-500 flex items-center justify-center shrink-0 border border-white/10">
                        <Users className="w-5 h-5" />
                     </div>
                     <div>
-                       <h3 className="text-base font-semibold text-white mb-2">Gestion des employés & Fiches de salaire</h3>
+                       <h3 className="text-base font-semibold text-white mb-2">{t('landing.featTeamTitle')}</h3>
                        <p className="text-sm text-zinc-400 leading-relaxed">
-                          Ajoutez vos collaborateurs et créez des fiches de paie ultra-simples et claires contenant les aides de l'État et la mutuelle locale sans aucun calcul manuel.
+                          {t('landing.featTeamDesc')}
                        </p>
                     </div>
                  </motion.div>
 
-                 {/* Feature 6 */}
                  <motion.div variants={itemVariants} className="p-7 bg-luxury-900 border border-white/5 rounded-2xl flex gap-4 hover:border-white/10 transition-all duration-300">
                     <div className="w-9 h-9 rounded-lg bg-gold-500/10 text-gold-500 flex items-center justify-center shrink-0 border border-white/10">
                        <Calculator className="w-5 h-5" />
                     </div>
                     <div>
-                       <h3 className="text-base font-semibold text-white mb-2">Simulateur simple & Veille</h3>
+                       <h3 className="text-base font-semibold text-white mb-2">{t('landing.featSimTitle')}</h3>
                        <p className="text-sm text-zinc-400 leading-relaxed">
-                          Estimez en deux secondes vos futurs impôts ou taxes périodiques. Recevez également des explications courtes et claires sur les nouvelles lois fiscales qui vous concernent.
+                          {t('landing.featSimDesc')}
                        </p>
                     </div>
                  </motion.div>
               </motion.div>
 
-              {/* Vos Bénéfices Subsection */}
+              {/* Benefits Subsection */}
               <div className="mt-20 sm:mt-24 pt-16 border-t border-white/5">
                 <div className="text-center mb-12">
-                   <h3 className="text-2xl sm:text-3xl font-serif tracking-tight text-white mb-3">Ce que vous y gagnez</h3>
-                   <p className="text-sm text-zinc-400 max-w-md mx-auto">Des bienfaits concrets sur votre vie d'entrepreneur au jour le jour.</p>
+                   <h3 className="text-2xl sm:text-3xl font-serif tracking-tight text-white mb-3">{t('landing.benefitsTitle')}</h3>
+                   <p className="text-sm text-zinc-400 max-w-md mx-auto">{t('landing.benefitsSubtitle')}</p>
                 </div>
 
                 <motion.div 
@@ -379,9 +374,9 @@ export function LandingPage() {
                       <div className="w-12 h-12 rounded-full bg-gold-500/10 flex items-center justify-center text-gold-400 mb-5 border border-gold-500/20">
                          <Zap className="w-6 h-6" />
                       </div>
-                      <h4 className="text-base font-semibold text-white mb-2">Du temps libre retrouvé</h4>
+                      <h4 className="text-base font-semibold text-white mb-2">{t('landing.benefitTimeTitle')}</h4>
                       <p className="text-sm text-zinc-400 leading-relaxed">
-                         Passez 5 fois moins de temps sur vos papiers administratifs. L'IA classe tout à votre place pour vous laisser vous concentrer sur votre commerce et vos clients.
+                         {t('landing.benefitTimeDesc')}
                       </p>
                    </motion.div>
 
@@ -389,9 +384,9 @@ export function LandingPage() {
                       <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-5 border border-emerald-500/20">
                          <Coins className="w-6 h-6" />
                       </div>
-                      <h4 className="text-base font-semibold text-white mb-2">Des économies d'argent</h4>
+                      <h4 className="text-base font-semibold text-white mb-2">{t('landing.benefitMoneyTitle')}</h4>
                       <p className="text-sm text-zinc-400 leading-relaxed">
-                         Émancipez-vous des amendes de retard et optimisez vos impôts grâce à des explications claires et des simulations simples adaptées au commerce local.
+                         {t('landing.benefitMoneyDesc')}
                       </p>
                    </motion.div>
 
@@ -399,9 +394,9 @@ export function LandingPage() {
                       <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 mb-5 border border-blue-500/20">
                          <ShieldCheck className="w-6 h-6" />
                       </div>
-                      <h4 className="text-base font-semibold text-white mb-2">Une sérénité totale</h4>
+                      <h4 className="text-base font-semibold text-white mb-2">{t('landing.benefitPeaceTitle')}</h4>
                       <p className="text-sm text-zinc-400 leading-relaxed">
-                         Ne paniquez plus face aux impôts. Vos justificatifs papier sont bien rangés en photo, certifiés et parfaitement prêts pour vos déclarations familiales ou e-SINTAX.
+                         {t('landing.benefitPeaceDesc')}
                       </p>
                    </motion.div>
                 </motion.div>
@@ -414,23 +409,22 @@ export function LandingPage() {
         <section className="py-20 sm:py-28 px-6 bg-luxury-900/30 border-b border-white/5 overflow-hidden">
            <div className="max-w-5xl mx-auto">
               <div className="text-center mb-12">
-                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight text-white mb-3">Des abonnements sans surprise</h2>
-                 <p className="text-sm sm:text-base text-zinc-400 mb-6 font-sans">Choisissez l'offre qui correspond à la taille de votre entreprise.</p>
+                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight text-white mb-3">{t('landing.pricingTitle')}</h2>
+                 <p className="text-sm sm:text-base text-zinc-400 mb-6 font-sans">{t('landing.pricingSubtitle')}</p>
                  
-                 {/* Monthly / Annual Toggle */}
                  <div className="inline-flex items-center gap-2.5 bg-luxury-950 p-1.5 rounded-full border border-white/5 mb-8">
                    <button 
                      onClick={() => setIsAnnual(false)}
                      className={`px-5 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all ${!isAnnual ? 'bg-white text-zinc-950 shadow' : 'text-zinc-400 hover:text-white'}`}
                    >
-                     Mensuel
+                     {t('landing.monthly')}
                    </button>
                    <button 
                      onClick={() => setIsAnnual(true)}
                      className={`px-5 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${isAnnual ? 'bg-gold-500 text-zinc-950 shadow' : 'text-zinc-400 hover:text-white'}`}
                    >
-                     Annuel
-                     <span className="bg-white/15 text-white text-[10px] px-2 py-0.5 rounded font-black">-15% d'économie</span>
+                     {t('landing.annual')}
+                     <span className="bg-white/15 text-white text-[10px] px-2 py-0.5 rounded font-black">{t('landing.savePercent')}</span>
                    </button>
                  </div>
               </div>
@@ -442,75 +436,72 @@ export function LandingPage() {
                 viewport={{ once: true, margin: "-100px" }}
                 className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto items-stretch"
               >
-                {/* Starter */}
                 <motion.div variants={itemVariants} className="bg-luxury-950 border border-white/5 rounded-2xl p-7 flex flex-col justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-1">Starter</h3>
-                    <p className="text-xs sm:text-sm text-zinc-500 mb-4">Parfait pour les créateurs & entrepreneurs individuels</p>
+                    <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-1">{t('landing.starter')}</h3>
+                    <p className="text-xs sm:text-sm text-zinc-500 mb-4">{t('landing.starterDesc')}</p>
                     <div className="flex items-baseline gap-1 mb-6">
                       <span className="text-3xl font-bold text-white font-mono">{getPrice(15000).toLocaleString()} F</span>
-                      <span className="text-zinc-500 text-xs">/ mois</span>
+                      <span className="text-zinc-500 text-xs">{t('landing.perMonth')}</span>
                     </div>
                     <ul className="space-y-3.5 mb-8">
-                      <PricingFeature text="1 seul utilisateur" />
-                      <PricingFeature text="Tri automatique des reçus en photo" />
-                      <PricingFeature text="Livre des dépenses et recettes simple" />
-                      <PricingFeature text="Outils de calcul simples inclus" />
+                      <PricingFeature text={t('landing.pricingFeatures.oneUser')} />
+                      <PricingFeature text={t('landing.pricingFeatures.autoReceipt')} />
+                      <PricingFeature text={t('landing.pricingFeatures.simpleLedger')} />
+                      <PricingFeature text={t('landing.pricingFeatures.simpleTools')} />
                     </ul>
                   </div>
                   <button onClick={handleLogin} className="w-full py-3 rounded-xl text-xs sm:text-sm font-semibold bg-white/5 text-white border border-white/10 hover:bg-white/10 transition-all">
-                    Essayer l'offre Starter
+                    {t('landing.tryStarter')}
                   </button>
                 </motion.div>
 
-                {/* Pro Tier (Best Value & Highly Popular) */}
                 <motion.div 
                   variants={itemVariants} 
                   className="bg-luxury-950 border-2 border-gold-500/50 rounded-2xl p-7 flex flex-col justify-between relative shadow-lg shadow-gold-500/5"
                 >
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold-500 text-zinc-950 text-[10px] font-black uppercase px-3 py-1 rounded-full tracking-wider animate-pulse">
-                    Meilleur choix
+                    {t('landing.bestChoice')}
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-gold-400 uppercase tracking-wider mb-1 mt-2">Pro</h3>
-                    <p className="text-xs sm:text-sm text-zinc-400 mb-4">Idéal pour les PME en croissance</p>
+                    <h3 className="text-sm font-bold text-gold-400 uppercase tracking-wider mb-1 mt-2">{t('landing.pro')}</h3>
+                    <p className="text-xs sm:text-sm text-zinc-400 mb-4">{t('landing.proDesc')}</p>
                     <div className="flex items-baseline gap-1 mb-6">
                       <span className="text-4xl font-bold text-white font-mono">{getPrice(25000).toLocaleString()} F</span>
-                      <span className="text-zinc-400 text-xs">/ mois</span>
+                      <span className="text-zinc-400 text-xs">{t('landing.perMonth')}</span>
                     </div>
                     <ul className="space-y-3.5 mb-8">
-                      <PricingFeature text="Tout ce qu'il y a dans l'offre Starter" />
-                      <PricingFeature text="Jusqu'à 5 personnes (Équipe)" />
-                      <PricingFeature text="Vérification facile de la banque" />
-                      <PricingFeature text="Suivi de vos stocks de produits" />
-                      <PricingFeature text="Fiches de salaire automatiques" />
-                      <PricingFeature text="Aide de notre équipe en priorité" />
+                      <PricingFeature text={t('landing.pricingFeatures.allStarter')} />
+                      <PricingFeature text={t('landing.pricingFeatures.upTo5')} />
+                      <PricingFeature text={t('landing.pricingFeatures.bankCheck')} />
+                      <PricingFeature text={t('landing.pricingFeatures.stockFollow')} />
+                      <PricingFeature text={t('landing.pricingFeatures.autoPayroll')} />
+                      <PricingFeature text={t('landing.pricingFeatures.priorityHelp')} />
                     </ul>
                   </div>
                   <button onClick={handleLogin} className="w-full py-3 rounded-xl text-xs sm:text-sm font-bold bg-gold-500 text-zinc-950 hover:bg-gold-400 transition-all shadow shadow-gold-500/20">
-                    Prendre l'offre Pro
+                    {t('landing.takePro')}
                   </button>
                 </motion.div>
 
-                {/* Ultra Tier */}
                 <motion.div variants={itemVariants} className="bg-luxury-950 border border-white/5 rounded-2xl p-7 flex flex-col justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-1">Ultra</h3>
-                    <p className="text-xs sm:text-sm text-zinc-500 mb-4">Pour les structures plus grandes et matures</p>
+                    <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-1">{t('landing.ultra')}</h3>
+                    <p className="text-xs sm:text-sm text-zinc-500 mb-4">{t('landing.ultraDesc')}</p>
                     <div className="flex items-baseline gap-1 mb-6">
                       <span className="text-2xl font-bold text-white font-mono">{getPrice(50000).toLocaleString()} F</span>
-                      <span className="text-zinc-500 text-xs">/ mois</span>
+                      <span className="text-zinc-500 text-xs">{t('landing.perMonth')}</span>
                     </div>
                     <ul className="space-y-3.5 mb-8">
-                      <PricingFeature text="Tout ce qu'il y a dans l'offre Pro" />
-                      <PricingFeature text="Nombre de personnes illimité" />
-                      <PricingFeature text="Connexion rapide avec e-SINTAX" />
-                      <PricingFeature text="Conseils et simulations sur-mesure" />
-                      <PricingFeature text="Actualités de votre secteur personnalisées" />
+                      <PricingFeature text={t('landing.pricingFeatures.allStarter')} />
+                      <PricingFeature text={t('landing.pricingFeatures.unlimitedUsers')} />
+                      <PricingFeature text={t('landing.pricingFeatures.eSintax')} />
+                      <PricingFeature text={t('landing.pricingFeatures.tailoredAdvice')} />
+                      <PricingFeature text={t('landing.pricingFeatures.tailoredNews')} />
                     </ul>
                   </div>
                   <button onClick={handleLogin} className="w-full py-3 rounded-xl text-xs sm:text-sm font-semibold bg-white/5 text-white border border-white/10 hover:bg-white/10 transition-all">
-                    Essayer l'offre Ultra
+                    {t('landing.tryUltra')}
                   </button>
                 </motion.div>
               </motion.div>
@@ -521,26 +512,26 @@ export function LandingPage() {
         <section className="py-20 px-6 bg-luxury-900/50">
            <div className="max-w-2xl mx-auto">
               <div className="text-center mb-12">
-                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight text-white mb-3">Questions Fréquentes</h2>
-                 <p className="text-sm text-zinc-400">Tout ce que vous devez savoir pour démarrer simplement.</p>
+                 <h2 className="text-3xl sm:text-4xl font-serif tracking-tight text-white mb-3">{t('landing.faqTitle')}</h2>
+                 <p className="text-sm text-zinc-400">{t('landing.faqSubtitle')}</p>
               </div>
 
               <div className="space-y-4">
                  <FAQItem 
-                    question="Je n'ai pas de notions de comptabilité, puis-je utiliser l'application ?" 
-                    answer="Oui, tout à fait. Libriwouô remplace le langage complexe des experts par des notions très faciles de la vie de tous les jours : Recettes, Dépenses et Bénéfices. Vous n'avez aucune écriture technique à enregistrer vous-même."
+                    question={t('landing.faq1Q')} 
+                    answer={t('landing.faq1A')}
                  />
                  <FAQItem 
-                    question="Les calculs respectent-ils vraiment les lois du Burkina Faso ?" 
-                    answer="Oui. L'application gère parfaitement les taxes, impôts et déclarations demandés au Burkina Faso et dans l'espace UEMOA (CME, RSI, etc.). Tout est calculé selon les lois en vigueur pour que vous soyez tranquille."
+                    question={t('landing.faq2Q')} 
+                    answer={t('landing.faq2A')}
                  />
                  <FAQItem 
-                    question="Mes données et mes secrets sont-ils bien gardés ?" 
-                    answer="Absolument. Vos justificatifs et vos comptes sont cryptés de bout en bout et conservés de manière totalement confidentielle au repos comme en transit. Vous seul possédez l'accès à vos comptes de gestion."
+                    question={t('landing.faq3Q')} 
+                    answer={t('landing.faq3A')}
                  />
                  <FAQItem 
-                    question="Est-ce possible de tester gratuitement sans engagement ?" 
-                    answer="Oui, créer votre compte vous donne directement accès aux outils de simulation et aux calendriers par défaut. Vous commencez ainsi en douceur et sans aucun frais."
+                    question={t('landing.faq4Q')} 
+                    answer={t('landing.faq4A')}
                  />
               </div>
            </div>
@@ -550,16 +541,16 @@ export function LandingPage() {
         <section className="py-24 px-6 text-center relative overflow-hidden">
            <div className="relative z-10 max-xl mx-auto">
               <h2 className="text-3xl sm:text-4xl font-serif tracking-tight text-white mb-3">
-                 Pilotez votre entreprise l'esprit tranquille.
+                 {t('landing.finalTitle')}
               </h2>
               <p className="text-sm text-zinc-400 mb-8 max-w-sm mx-auto">
-                 Rejoignez les entrepreneurs qui ont complètement chassé la panique des papiers et du stress fiscal.
+                 {t('landing.finalSubtitle')}
               </p>
               <button 
                 onClick={handleLogin}
                 className="group inline-flex items-center justify-center gap-2 px-7 py-3.5 text-xs sm:text-sm font-semibold bg-white text-zinc-950 rounded-full hover:bg-zinc-200 transition-all duration-300 shadow-sm animate-bounce"
               >
-                Créer mon compte gratuit
+                {t('landing.ctaCreateAccount')}
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </button>
            </div>
@@ -567,7 +558,7 @@ export function LandingPage() {
       </main>
 
       <footer className="py-6 text-center text-zinc-600 text-xs border-t border-white/5 bg-luxury-950">
-         <p>© {new Date().getFullYear()} Libriwouô. Tous droits réservés.</p>
+         <p>{t('landing.footer', { year: new Date().getFullYear() })}</p>
       </footer>
     </div>
   );

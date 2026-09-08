@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { auth, db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -10,8 +11,10 @@ import { Tooltip } from '../components/Tooltip';
 import { OnboardingChecklist } from '../components/OnboardingChecklist';
 
 import { NeoLogo } from '../components/NeoLogo';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function OnboardingPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -29,21 +32,20 @@ export function OnboardingPage() {
   });
 
   const checklistItems = [
-    { label: "Nom de l'entreprise", completed: !!formData.companyName },
-    { label: "Identifiant Financier Unique (IFU)", completed: !!formData.ifu },
-    { label: "Numéro RCCM", completed: !!formData.rccm },
-    { label: "Forme Juridique sélectionnée", completed: !!formData.legalStatus },
-    { label: "Secteur défini", completed: !!formData.sector },
-    { label: "Chiffre d'Affaires estimé", completed: !!formData.estimatedRevenue },
+    { label: t('onboarding.companyName'), completed: !!formData.companyName },
+    { label: "IFU", completed: !!formData.ifu },
+    { label: "RCCM", completed: !!formData.rccm },
+    { label: t('onboarding.legalStatus'), completed: !!formData.legalStatus },
+    { label: t('onboarding.sector'), completed: !!formData.sector },
+    { label: t('onboarding.revenue'), completed: !!formData.estimatedRevenue },
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
-    // Manual validation to catch empty fields and show visible error
     if (!formData.companyName.trim() || !formData.ifu.trim() || !formData.rccm.trim() || !formData.sector.trim() || !formData.estimatedRevenue.trim()) {
-      setError("Veuillez remplir tous les champs obligatoires (indiqués par *) avant de continuer.");
+      setError(t('onboarding.requiredError'));
       return;
     }
 
@@ -69,18 +71,15 @@ export function OnboardingPage() {
         },
         createdAt: new Date().toISOString()
       };
-      // Local-first: ensure instant availability offline + survive Firestore outage
       try { const { localDb } = await import('../services/localDb'); localDb.add('companies', { id: user.uid, ...companyPayload }); } catch(e){ console.warn("[Onboarding] localDb save failed", e); }
       await setDoc(doc(db, 'companies', user.uid), companyPayload);
 
-      // Update global auth state immediately
       await refreshProfile();
       
-      // Navigate using the router (much smoother)
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
       console.error("Error saving profile", err);
-      setError(err.message || "Impossible d'enregistrer le profil.");
+      setError(err.message || t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -88,6 +87,9 @@ export function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-luxury-900 text-gold-100 flex flex-col p-6 font-sans selection:bg-gold-500/20 overflow-y-auto">
+      <div className="w-full max-w-md mx-auto flex justify-end mb-2">
+        <LanguageSwitcher variant="compact" />
+      </div>
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -96,13 +98,13 @@ export function OnboardingPage() {
       >
         <div className="mb-8 text-center flex flex-col items-center">
           <NeoLogo size="lg" className="mb-4" />
-          <h1 className="text-3xl font-serif tracking-tight mb-2 text-gold-100">Configuration du profil</h1>
-          <p className="text-sm text-gold-500/70 font-sans">Paramétrez votre entreprise pour adapter les règles fiscales.</p>
+          <h1 className="text-3xl font-serif tracking-tight mb-2 text-gold-100">{t('onboarding.title')}</h1>
+          <p className="text-sm text-gold-500/70 font-sans">{t('onboarding.subtitle')}</p>
           <button 
             onClick={() => auth.signOut()}
             className="mt-4 text-xs font-semibold text-gold-500/60 hover:text-gold-400 transition-colors"
           >
-            Se déconnecter
+            {t('onboarding.logout')}
           </button>
         </div>
 
@@ -119,23 +121,23 @@ export function OnboardingPage() {
           <div className="space-y-4">
             <div>
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="block text-xs font-medium text-gold-500/70">Nom de l'entreprise *</label>
-                <Tooltip content="Le nom officiel de votre entité juridique tel qu'inscrit au registre du commerce." />
+                <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.companyName')}</label>
+                <Tooltip content={t('onboarding.companyNameHint')} />
               </div>
               <input 
                 type="text"
                 value={formData.companyName}
                 onChange={e => setFormData({...formData, companyName: e.target.value})}
                 className="w-full bg-black/40 border border-gold-500/20 rounded-xl px-4 py-2.5 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40 transition-all duration-300 placeholder:text-gold-500/30"
-                placeholder="Libriwouô SARL"
+                placeholder={t('onboarding.companyNamePlaceholder')}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-xs font-medium text-gold-500/70">IFU *</label>
-                  <Tooltip content="Identifiant Financier Unique. Indispensable pour vos déclarations." />
+                  <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.ifu')}</label>
+                  <Tooltip content={t('onboarding.ifuHint')} />
                 </div>
                 <input 
                   type="text"
@@ -147,8 +149,8 @@ export function OnboardingPage() {
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-xs font-medium text-gold-500/70">Numéro RCCM *</label>
-                  <Tooltip content="Le numéro d'immatriculation au Registre du Commerce et du Crédit Mobilier." />
+                  <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.rccm')}</label>
+                  <Tooltip content={t('onboarding.rccmHint')} />
                 </div>
                 <input 
                   type="text"
@@ -163,8 +165,8 @@ export function OnboardingPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-xs font-medium text-gold-500/70">Téléphone</label>
-                  <Tooltip content="Numéro de contact principal de l'entreprise." />
+                  <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.phone')}</label>
+                  <Tooltip content={t('onboarding.phoneHint')} />
                 </div>
                 <input 
                   type="tel"
@@ -176,8 +178,8 @@ export function OnboardingPage() {
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-xs font-medium text-gold-500/70">Email de l'entreprise</label>
-                  <Tooltip content="Adresse email professionnelle figurant sur vos documents officiels (peut être modifiée par la suite)." />
+                  <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.companyEmail')}</label>
+                  <Tooltip content={t('onboarding.companyEmailHint')} />
                 </div>
                 <input 
                   type="email"
@@ -191,8 +193,8 @@ export function OnboardingPage() {
 
             <div>
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="block text-xs font-medium text-gold-500/70">Adresse siège social</label>
-                <Tooltip content="L'adresse officielle qui figurera sur vos factures et les documents fiscaux." />
+                <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.address')}</label>
+                <Tooltip content={t('onboarding.addressHint')} />
               </div>
               <input 
                 type="text"
@@ -206,25 +208,25 @@ export function OnboardingPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-xs font-medium text-gold-500/70">Forme Juridique *</label>
-                  <Tooltip content="La structure légale de votre entreprise (détermine certaines obligations)." />
+                  <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.legalStatus')}</label>
+                  <Tooltip content={t('onboarding.legalStatusHint')} />
                 </div>
                 <select 
                   value={formData.legalStatus}
                   onChange={e => setFormData({...formData, legalStatus: e.target.value})}
                   className="w-full bg-black/40 border border-gold-500/20 rounded-xl px-4 py-2.5 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40 transition-all duration-300 appearance-none"
                 >
-                  <option value="SARL">SARL</option>
-                  <option value="SA">SA</option>
-                  <option value="SUARL">SUARL</option>
-                  <option value="Entreprise Individuelle">Individuelle</option>
-                  <option value="Autre">Autre</option>
+                  <option value="SARL">{t('onboarding.legalOptions.SARL')}</option>
+                  <option value="SA">{t('onboarding.legalOptions.SA')}</option>
+                  <option value="SUARL">{t('onboarding.legalOptions.SUARL')}</option>
+                  <option value="Entreprise Individuelle">{t('onboarding.legalOptions.EI')}</option>
+                  <option value="Autre">{t('onboarding.legalOptions.other')}</option>
                 </select>
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-xs font-medium text-gold-500/70">Secteur *</label>
-                  <Tooltip content="Votre secteur d'activité principal (aide à affiner les règles fiscales)." />
+                  <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.sector')}</label>
+                  <Tooltip content={t('onboarding.sectorHint')} />
                 </div>
                 <input 
                   type="text"
@@ -238,15 +240,15 @@ export function OnboardingPage() {
 
             <div>
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="block text-xs font-medium text-gold-500/70">Chiffre d'Affaires Annuel Estimé (FCFA) *</label>
-                <Tooltip content="Le montant total des ventes/services prévus. Ce chiffre définit votre régime fiscal (CME, RSI ou RNI)." />
+                <label className="block text-xs font-medium text-gold-500/70">{t('onboarding.revenue')}</label>
+                <Tooltip content={t('onboarding.revenueHint')} />
               </div>
               <input 
                 type="number"
                 value={formData.estimatedRevenue}
                 onChange={e => setFormData({...formData, estimatedRevenue: e.target.value})}
                 className="w-full bg-black/40 border border-gold-500/20 rounded-xl px-4 py-2.5 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40 transition-all duration-300 placeholder:text-gold-500/30"
-                placeholder="Ex: 25000000"
+                placeholder={t('onboarding.revenuePlaceholder')}
               />
             </div>
           </div>
@@ -256,7 +258,7 @@ export function OnboardingPage() {
             disabled={loading}
             className="w-full py-3.5 mt-6 text-sm font-semibold bg-gradient-to-r from-gold-500 to-gold-400 text-zinc-900 rounded-xl hover:from-gold-400 hover:to-gold-300 transition-all duration-300 disabled:opacity-50 shadow-[0_0_15px_rgba(212,175,55,0.2)]"
           >
-            {loading ? 'Enregistrement...' : 'Accéder au tableau de bord'}
+            {loading ? t('onboarding.submitting') : t('onboarding.submit')}
           </button>
         </form>
       </motion.div>
