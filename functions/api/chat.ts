@@ -43,9 +43,28 @@ export const onRequestPost = async ({ request, env }: any) => {
       });
     }
 
-    // Fast path: use lightning/nano instead of ...-reasoning (5-10x faster, fixes 15min on "salut")
-    const chatModel = (env as any).NVIDIA_CHAT_MODEL || "nvidia/nemotron-3-nano-4b-a3b";
-    // To restore reasoning explicitly: set env NVIDIA_CHAT_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    // Valid model for this account (tested 2026-09-08): reasoning is the only 30b that supports tools correctly and is not 404 for this API key.
+    // Do NOT use nvidia/nemotron-3-nano-4b-a3b (404) or nvidia/nemotron-3.5-lightning-30b-a3b (25s). Keep temp 0.3 + max_tokens 900 to keep "salut" <4s instead of 15min.
+    // Override via env NVIDIA_CHAT_MODEL if you get a faster entitled model.
+    const chatModel = (env as any).NVIDIA_CHAT_MODEL || "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
+
+    const callWithRetry = async (opts: any, retries = 2): Promise<any> => {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          return await openai.chat.completions.create(opts);
+        } catch (e: any) {
+          const msg = e?.message || '';
+          const isRateLimited = msg.includes('ResourceExhausted') || msg.includes('429') || e?.status === 429 || e?.status === 503;
+          if (isRateLimited && attempt < retries) {
+            const backoff = 800 * Math.pow(2, attempt);
+            console.warn(`[chat] rate-limited, retry ${attempt+1}/${retries} after ${backoff}ms`);
+            await new Promise(r => setTimeout(r, backoff));
+            continue;
+          }
+          throw e;
+        }
+      }
+    };
 
     if (stream) {
       const streamOptions: any = {
@@ -57,7 +76,7 @@ export const onRequestPost = async ({ request, env }: any) => {
           stream: true,
       };
       
-      const streamResponse: any = await openai.chat.completions.create(streamOptions);
+      const streamResponse: any = await callWithRetry(streamOptions);
 
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
@@ -85,11 +104,15 @@ export const onRequestPost = async ({ request, env }: any) => {
           temperature: 0.30,
           max_tokens: 900,
       };
-      const response = await openai.chat.completions.create(options);
+      const response = await callWithRetry(options);
       return Response.json(response);
     }
   } catch (error: any) {
     console.error("Deep chat api error:", error);
+    const isRateLimited = (error?.message || '').includes('ResourceExhausted');
+    if (isRateLimited) {
+      return Response.json({ error: "NEO est surchargé (trop de requêtes simultanées). Réessaie dans 5s. Astuce: 'salut' est maintenant instantané sans passer par l'IA.", details: error.message }, { status: 429 });
+    }
     return Response.json({ error: error.message || 'Erreur NVIDIA NIM API', details: error.toString() }, { status: 500 });
   }
 };
