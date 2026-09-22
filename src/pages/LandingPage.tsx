@@ -100,8 +100,7 @@ export function LandingPage() {
       >
         <div className="flex items-center gap-3">
             <NeoLogo size="sm" showText={false} />
-            <span className="font-serif font-semibold text-lg tracking-tight text-white">Libriwouô</span>
-         </div>
+          </div>
         <div className="flex items-center gap-2">
           <LanguageSwitcher variant="compact" />
           <button 

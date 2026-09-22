@@ -1,16 +1,23 @@
 import OpenAI from 'openai';
 
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const OPENROUTER_DEFAULT_MODEL = "inclusionai/ling-3.0-flash-vl:free";
+
 export const onRequestPost = async ({ request, env }: any) => {
   try {
-    const apiKey = env.NVIDIA_API_KEY;
+    const apiKey = env.OPENROUTER_API_KEY || env.NVIDIA_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'NVIDIA_API_KEY manquante' }, { status: 500 });
+      return Response.json({ error: 'OPENROUTER_API_KEY manquante' }, { status: 500 });
     }
 
     const openai = new OpenAI({
-        baseURL: "https://integrate.api.nvidia.com/v1",
-        apiKey: apiKey
-    });
+        baseURL: (env as any).OPENROUTER_BASE_URL || OPENROUTER_BASE_URL,
+        apiKey: apiKey,
+        defaultHeaders: {
+          ...(env.APP_URL ? { "HTTP-Referer": env.APP_URL } : {}),
+          "X-Title": "Libriwouo Vision OCR",
+        },
+    } as any);
     
     const body: any = await request.json().catch(() => ({}));
     const { base64, mimeType, text } = body;
@@ -68,8 +75,10 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
         messages[0].content.push({ type: "text", text: "Voici le contenu textuel du document :\n" + text });
     }
 
+    const visionModel = (env as any).OPENROUTER_VISION_MODEL || (env as any).OPENROUTER_CHAT_MODEL || OPENROUTER_DEFAULT_MODEL;
+
     const response = await openai.chat.completions.create({
-        model: "meta/llama-3.2-11b-vision-instruct",
+        model: visionModel,
         messages: messages as any,
         temperature: 0.1,
     });
@@ -77,6 +86,6 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
     return Response.json({ text: response.choices[0].message.content });
   } catch (error: any) {
     console.error("Erreur gérée dans /api/vision :", error);
-    return Response.json({ error: error.message || 'Erreur OCR NVIDIA NIM API', details: error.toString() }, { status: 500 });
+    return Response.json({ error: error.message || 'Erreur OCR OpenRouter API', details: error.toString() }, { status: 500 });
   }
 };

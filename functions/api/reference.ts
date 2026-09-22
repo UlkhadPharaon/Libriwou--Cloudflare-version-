@@ -1,16 +1,23 @@
 import OpenAI from 'openai';
 
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const OPENROUTER_DEFAULT_MODEL = "inclusionai/ling-3.0-flash-vl:free";
+
 export const onRequestPost = async ({ request, env }: any) => {
   try {
-    const apiKey = env.NVIDIA_API_KEY;
+    const apiKey = env.OPENROUTER_API_KEY || env.NVIDIA_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'NVIDIA_API_KEY manquante' }, { status: 500 });
+      return Response.json({ error: 'OPENROUTER_API_KEY manquante' }, { status: 500 });
     }
 
     const openai = new OpenAI({
-        baseURL: "https://integrate.api.nvidia.com/v1",
-        apiKey: apiKey
-    });
+        baseURL: (env as any).OPENROUTER_BASE_URL || OPENROUTER_BASE_URL,
+        apiKey: apiKey,
+        defaultHeaders: {
+          ...(env.APP_URL ? { "HTTP-Referer": env.APP_URL } : {}),
+          "X-Title": "Libriwouo Reference Analyzer",
+        },
+    } as any);
     
     const body: any = await request.json().catch(() => ({}));
     const { base64, mimeType, documentType, documentName, text: textPayload } = body;
@@ -39,8 +46,10 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
         messages[0].content.push({ type: "text", text: "Voici le contenu textuel du document :\n" + textPayload });
     }
 
+    const referenceModel = (env as any).OPENROUTER_CHAT_MODEL || OPENROUTER_DEFAULT_MODEL;
+
     const response = await openai.chat.completions.create({
-        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        model: referenceModel,
         messages: messages as any,
         temperature: 0.1,
     });
@@ -56,6 +65,6 @@ Renvoie UNIQUEMENT un objet JSON strict avec ces champs:
     return Response.json({ analysis: JSON.parse(text) });
   } catch (error: any) {
     console.error("Erreur gérée dans /api/reference :", error);
-    return Response.json({ error: error.message || 'Erreur NVIDIA NIM API', details: error.toString() }, { status: 500 });
+    return Response.json({ error: error.message || 'Erreur OpenRouter API', details: error.toString() }, { status: 500 });
   }
 };

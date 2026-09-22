@@ -32,14 +32,6 @@ export function SplashScreen({ onFinish }: { onFinish?: () => void }) {
       >
         <div className="relative mb-12">
           <NeoLogo size="xl" showText={false} />
-          <motion.h1 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mt-6 text-3xl md:text-4xl font-serif text-gold-100 italic text-center"
-          >
-            Libriwouô
-          </motion.h1>
         </div>
 
         <motion.div

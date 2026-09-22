@@ -1,7 +1,10 @@
 import OpenAI from 'openai';
 
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const OPENROUTER_DEFAULT_MODEL = "inclusionai/ling-3.0-flash-vl:free";
+
 export const onRequestPost = async ({ request, env }: any) => {
-  const nvidiaKey = env.NVIDIA_API_KEY;
+  const openrouterKey = env.OPENROUTER_API_KEY || env.NVIDIA_API_KEY;
   const tavilyKey = env.TAVILY_API_KEY;
   
   const generateMockNews = (sector: string, date: string) => {
@@ -36,7 +39,7 @@ export const onRequestPost = async ({ request, env }: any) => {
   const body = await request.json().catch(() => ({}));
   const { sector, date } = body;
 
-  if (!nvidiaKey || !tavilyKey) {
+  if (!openrouterKey || !tavilyKey) {
     console.warn("API Keys missing in /api/intelligence. Returning mock data.");
     return Response.json({ news: generateMockNews(sector, date) });
   }
@@ -80,11 +83,15 @@ export const onRequestPost = async ({ request, env }: any) => {
          searchResultsText = tavilyData.results.map((r: any) => `Titre: ${r.title}\nURL: ${r.url}\nExtrait: ${r.snippet || r.content || ''}`).join('\n\n');
       }
 
-      // 2. NVIDIA NIM DeepSeek V3.2
+      // 2. OpenRouter (unified VL model)
       const openai = new OpenAI({
-          baseURL: "https://integrate.api.nvidia.com/v1",
-          apiKey: nvidiaKey
-      });
+          baseURL: (env as any).OPENROUTER_BASE_URL || OPENROUTER_BASE_URL,
+          apiKey: openrouterKey,
+          defaultHeaders: {
+            ...(env.APP_URL ? { "HTTP-Referer": env.APP_URL } : {}),
+            "X-Title": "Libriwouo Intelligence Veille",
+          },
+      } as any);
 
       const prompt = `### CONSIGNES DE SÉCURITÉ ET DE LANGUE ###
 - Tu dois IMPÉRATIVEMENT répondre en FRANÇAIS.
@@ -115,8 +122,10 @@ Renvoie UNIQUEMENT un objet JSON contenant une propriété "news" qui est un tab
 
 NE RENVOIE AUCUN TEXTE en dehors du bloc JSON. Assure-toi de la validité stricte de la syntaxe JSON. Exemple: {"news": [{"title": "...", "excerpt": "..."}]}`;
 
+      const intelligenceModel = (env as any).OPENROUTER_CHAT_MODEL || OPENROUTER_DEFAULT_MODEL;
+
       const dsResponse = await openai.chat.completions.create({
-          model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+          model: intelligenceModel,
           messages: [{ role: "user", content: prompt }],
           max_tokens: 4096,
           temperature: 0.1,

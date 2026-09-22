@@ -1,20 +1,27 @@
 import OpenAI from 'openai';
 
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const OPENROUTER_DEFAULT_MODEL = "inclusionai/ling-3.0-flash-vl:free";
+
 export const onRequestPost = async ({ request, env }: any) => {
   try {
-    const apiKey = env.NVIDIA_API_KEY;
+    const apiKey = env.OPENROUTER_API_KEY || env.NVIDIA_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'NVIDIA_API_KEY manquante' }, { status: 500 });
+      return Response.json({ error: 'OPENROUTER_API_KEY manquante' }, { status: 500 });
     }
 
     const body = await request.json().catch(() => ({}));
     const { messages = [], tools, stream, enable_thinking } = body;
     const isThinkingEnabled = !!enable_thinking;
-    
+
     const openai = new OpenAI({
-        baseURL: "https://integrate.api.nvidia.com/v1",
-        apiKey: apiKey
-    });
+        baseURL: (env as any).OPENROUTER_BASE_URL || OPENROUTER_BASE_URL,
+        apiKey: apiKey,
+        defaultHeaders: {
+          ...(env.APP_URL ? { "HTTP-Referer": env.APP_URL } : {}),
+          "X-Title": "Libriwouo NEO Assistant",
+        },
+    } as any);
 
     const cleanMessages = messages.map((msg: any) => {
       if (Array.isArray(msg.content)) {
@@ -43,10 +50,9 @@ export const onRequestPost = async ({ request, env }: any) => {
       });
     }
 
-    // Valid model for this account (tested 2026-09-08): reasoning is the only 30b that supports tools correctly and is not 404 for this API key.
-    // Do NOT use nvidia/nemotron-3-nano-4b-a3b (404) or nvidia/nemotron-3.5-lightning-30b-a3b (25s). Keep temp 0.3 + max_tokens 900 to keep "salut" <4s instead of 15min.
-    // Override via env NVIDIA_CHAT_MODEL if you get a faster entitled model.
-    const chatModel = (env as any).NVIDIA_CHAT_MODEL || "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
+    // OpenRouter unified model for NEO chat (vision-capable, free tier).
+    // Override via env OPENROUTER_CHAT_MODEL if needed.
+    const chatModel = (env as any).OPENROUTER_CHAT_MODEL || (env as any).NVIDIA_CHAT_MODEL || OPENROUTER_DEFAULT_MODEL;
 
     const callWithRetry = async (opts: any, retries = 2): Promise<any> => {
       for (let attempt = 0; attempt <= retries; attempt++) {
@@ -66,13 +72,16 @@ export const onRequestPost = async ({ request, env }: any) => {
       }
     };
 
+    // NOTE: ling-3.0-flash-vl is a reasoning model — it spends tokens in `reasoning`
+    // before writing `content`. 900 truncates during reasoning (content=null).
+    // 2000+ lets it finish thinking AND answer.
     if (stream) {
       const streamOptions: any = {
           model: chatModel,
           messages: finalMessages,
           tools,
           temperature: 0.30,
-          max_tokens: 900,
+          max_tokens: 2000,
           stream: true,
       };
       
@@ -102,7 +111,7 @@ export const onRequestPost = async ({ request, env }: any) => {
           messages: finalMessages,
           tools,
           temperature: 0.30,
-          max_tokens: 900,
+          max_tokens: 2000,
       };
       const response = await callWithRetry(options);
       return Response.json(response);
@@ -113,6 +122,6 @@ export const onRequestPost = async ({ request, env }: any) => {
     if (isRateLimited) {
       return Response.json({ error: "NEO est surchargé (trop de requêtes simultanées). Réessaie dans 5s. Astuce: 'salut' est maintenant instantané sans passer par l'IA.", details: error.message }, { status: 429 });
     }
-    return Response.json({ error: error.message || 'Erreur NVIDIA NIM API', details: error.toString() }, { status: 500 });
+    return Response.json({ error: error.message || 'Erreur OpenRouter API', details: error.toString() }, { status: 500 });
   }
 };

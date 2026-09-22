@@ -441,9 +441,16 @@ STYLE: Décisif, expert, autonome et en constante auto-amélioration. N'attends 
         break;
     }
 
-    return { 
-        text: assistantMessage?.content || (allActions.length > 0 ? "J'ai effectué les actions demandées." : "Je n'ai pas pu générer de réponse."), 
-        actions: allActions 
+    // OpenRouter reasoning models (e.g. ling-3.0-flash-vl) may put output in
+    // `reasoning` when `content` is null/truncated — fall back gracefully.
+    const fallbackText =
+      assistantMessage?.content ||
+      (assistantMessage as any)?.reasoning ||
+      (allActions.length > 0 ? "J'ai effectué les actions demandées." : "Je n'ai pas pu générer de réponse.");
+
+    return {
+        text: fallbackText,
+        actions: allActions
     };
 
   } catch (error) {

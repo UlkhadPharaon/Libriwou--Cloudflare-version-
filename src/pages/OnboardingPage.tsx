@@ -97,7 +97,7 @@ export function OnboardingPage() {
         className="w-full max-w-md mx-auto my-auto bg-luxury-800/80 backdrop-blur-xl border border-gold-500/20 p-8 rounded-3xl shadow-[0_0_40px_rgba(212,175,55,0.1)]"
       >
         <div className="mb-8 text-center flex flex-col items-center">
-          <NeoLogo size="lg" className="mb-4" />
+          <NeoLogo size="lg" showText={false} className="mb-4" />
           <h1 className="text-3xl font-serif tracking-tight mb-2 text-gold-100">{t('onboarding.title')}</h1>
           <p className="text-sm text-gold-500/70 font-sans">{t('onboarding.subtitle')}</p>
           <button 

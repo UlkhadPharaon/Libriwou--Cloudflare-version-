@@ -7,7 +7,7 @@ interface LogoProps {
   showText?: boolean;
 }
 
-export function NeoLogo({ className, size = 'md', showText = true }: LogoProps) {
+export function NeoLogo({ className, size = 'md', showText = false }: LogoProps) {
   // Let the image natural aspect ratio drive the width.
   const sizes = {
     sm: 'h-8',
