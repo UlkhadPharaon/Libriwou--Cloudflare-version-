@@ -778,7 +778,7 @@ export function HubPage() {
                 </div>
               )}
 
-              {msg.actions && msg.actions.map((action, idx) => (
+              {Array.isArray(msg.actions) && msg.actions.map((action, idx) => (
                 <div key={idx} className="mt-2 w-full max-w-md p-4 rounded-xl bg-luxury-800/80 backdrop-blur-md border border-border-subtle shadow-[0_0_15px_rgba(212,175,55,0.05)]">
                   {action.name === 'fetch_all_transactions' && (
                     <div className="flex items-center gap-2">
@@ -1289,19 +1289,31 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
 }) {
   const { user } = useAuth();
   const [status, setStatus] = useState<'pending' | 'saved' | 'error'>(isAlreadySaved ? 'saved' : 'pending');
+  // Données persistées (Firestore/localStorage) parfois incomplètes : ne jamais crasher le rendu.
+  // NOTE règles des hooks : tous les useState ci-dessous sont inconditionnels ;
+  // le garde anti-crash est APRÈS les hooks.
+  const safeArgs = args && typeof args === 'object' ? args : {} as any;
   // Champs éditables — initialisés depuis l'analyse IA, modifiables avant enregistrement
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
-    type: args.type === 'INCOME' ? 'INCOME' : 'EXPENSE',
-    vendorName: args.vendorName || '',
-    amountExclTax: String(args.amountExclTax ?? ''),
-    vatAmount: String(args.vatAmount ?? ''),
-    amountInclTax: String(args.amountInclTax ?? ''),
-    date: args.date || new Date().toISOString().split('T')[0],
-    category: args.category || '',
-    syscohadaCode: args.syscohadaCode || '',
-    description: args.description || '',
+    type: safeArgs.type === 'INCOME' ? 'INCOME' : 'EXPENSE',
+    vendorName: safeArgs.vendorName || '',
+    amountExclTax: String(safeArgs.amountExclTax ?? ''),
+    vatAmount: String(safeArgs.vatAmount ?? ''),
+    amountInclTax: String(safeArgs.amountInclTax ?? ''),
+    date: safeArgs.date || new Date().toISOString().split('T')[0],
+    category: safeArgs.category || '',
+    syscohadaCode: safeArgs.syscohadaCode || '',
+    description: safeArgs.description || '',
   });
+  if (!args || typeof args !== 'object') {
+    return (
+      <div className="flex items-center gap-2">
+        <AlertCircle className="w-5 h-5 text-red-400" />
+        <span className="text-sm text-red-400/80">Proposition indisponible (données corrompues).</span>
+      </div>
+    );
+  }
   const setField = (key: keyof typeof form, value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
 
@@ -1310,7 +1322,7 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
     try {
       // Force numeric conversion (depuis les champs édités)
       const transactionData = {
-        ...args,
+        ...safeArgs,
         type: form.type,
         vendorName: form.vendorName,
         amountExclTax: Number(form.amountExclTax) || 0,
@@ -1395,13 +1407,13 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
         <span className="text-sm font-medium text-gold-100">Proposition d'enregistrement</span>
       </div>
       
-      {args.fraudSuspected && (
+      {safeArgs.fraudSuspected && (
         <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-bold text-red-400">Alerte IA (Rapprochement photographique)</p>
-              <p className="text-xs text-red-400/80 mt-1">{args.fraudReason}</p>
+              <p className="text-xs text-red-400/80 mt-1">{safeArgs.fraudReason}</p>
             </div>
           </div>
         </div>
