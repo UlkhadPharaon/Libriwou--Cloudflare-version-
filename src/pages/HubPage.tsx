@@ -1334,11 +1334,52 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
   }
   const setField = (key: keyof typeof form, value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
+  // Lignes détaillées du document (ticket de caisse, facture multi-articles)
+  type LineItem = { description: string; quantity: string; unitPrice: string; amountExclTax: string };
+  const toLine = (l: any): LineItem => ({
+    description: String(l?.description ?? ''),
+    quantity: String(l?.quantity ?? 1),
+    unitPrice: String(l?.unitPrice ?? ''),
+    amountExclTax: String(l?.amountExclTax ?? ''),
+  });
+  const [lines, setLines] = useState<LineItem[]>(
+    Array.isArray(safeArgs.lineItems) ? safeArgs.lineItems.map(toLine) : []
+  );
+  const setLine = (idx: number, key: keyof LineItem, value: string) =>
+    setLines(prev => prev.map((l, i) => (i === idx ? { ...l, [key]: value } : l)));
+  const removeLine = (idx: number) => setLines(prev => prev.filter((_, i) => i !== idx));
+  const addLine = () => setLines(prev => [...prev, { description: '', quantity: '1', unitPrice: '', amountExclTax: '' }]);
+  const recalcFromLines = () => {
+    const ht = lines.reduce((sum, l) => {
+      const amt = Number(l.amountExclTax);
+      if (Number.isFinite(amt) && amt > 0) return sum + amt;
+      return sum + (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0);
+    }, 0);
+    const tva = Number(form.vatAmount) || 0;
+    setForm(prev => ({
+      ...prev,
+      amountExclTax: String(Math.round(ht)),
+      amountInclTax: String(Math.round(ht + tva)),
+    }));
+  };
 
   const handleConfirm = async () => {
     if (!user) return;
     try {
       // Force numeric conversion (depuis les champs édités)
+      const cleanLines = lines
+        .filter(l => l.description.trim() !== '')
+        .map(l => {
+          const quantity = Number(l.quantity) || 1;
+          const unitPrice = Number(l.unitPrice) || 0;
+          const amt = Number(l.amountExclTax);
+          return {
+            description: l.description.trim(),
+            quantity,
+            unitPrice,
+            amountExclTax: Number.isFinite(amt) && amt > 0 ? amt : quantity * unitPrice,
+          };
+        });
       const transactionData = {
         ...safeArgs,
         type: form.type,
@@ -1351,6 +1392,7 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
         category: form.category,
         syscohadaCode: form.syscohadaCode,
         description: form.description,
+        ...(cleanLines.length > 0 ? { lineItems: cleanLines } : {}),
         userId: user.uid,
         createdAt: new Date().toISOString(),
         fecFingerprint: `NEO-${Date.now()}`,
@@ -1414,6 +1456,18 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
           <ResultItem label="Catégorie" value={form.category} />
           {form.syscohadaCode && <ResultItem label="Compte SYSCOHADA" value={form.syscohadaCode} />}
         </div>
+        {lines.length > 0 && (
+          <div className="mt-4 rounded-xl border border-white/10 overflow-hidden">
+            <div className="px-3 py-2 bg-white/5 text-xs font-semibold text-gold-100">Articles enregistrés ({lines.length})</div>
+            {lines.filter(l => l.description.trim() !== '').map((l, i) => (
+              <div key={i} className="px-3 py-1.5 border-t border-white/5 text-xs flex items-center justify-between gap-2">
+                <span className="text-gold-100 truncate">{l.description}</span>
+                <span className="text-zinc-400 shrink-0">×{l.quantity}</span>
+                <span className="text-gold-100 font-mono shrink-0">{l.amountExclTax} F</span>
+              </div>
+            ))}
+          </div>
+        )}
       </>
     );
   }
@@ -1480,6 +1534,55 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
             <input value={form.description} onChange={e => setField('description', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
           </label>
         </div>
+      )}
+      {lines.length > 0 && (
+        <div className="mb-4 rounded-xl border border-white/10 overflow-hidden">
+          <div className="px-3 py-2 bg-white/5 text-xs font-semibold text-gold-100 flex items-center justify-between">
+            <span>Détail des articles ({lines.length})</span>
+            <button onClick={recalcFromLines} className="text-[11px] text-gold-400 hover:text-gold-300 font-medium">
+              Recalculer HT/TTC
+            </button>
+          </div>
+          {lines.map((l, i) => (
+            <div key={i} className="px-3 py-2 border-t border-white/5 text-sm">
+              {!editing ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-gold-100 truncate">{l.description || 'Article sans nom'}</span>
+                  <span className="text-zinc-400 text-xs shrink-0">×{l.quantity}</span>
+                  <span className="text-gold-100 font-mono text-xs shrink-0">{l.amountExclTax || ((Number(l.quantity) || 0) * (Number(l.unitPrice) || 0))} F</span>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <input value={l.description} onChange={e => setLine(i, 'description', e.target.value)} placeholder="Article" className="flex-1 min-w-0 bg-black/40 border border-gold-500/20 rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                    <button onClick={() => removeLine(i)} className="px-2 py-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/20 rounded-lg shrink-0">✕</button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className="flex flex-col gap-0.5 text-[10px] text-gold-500/70">Qté
+                      <input type="number" value={l.quantity} onChange={e => setLine(i, 'quantity', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                    </label>
+                    <label className="flex flex-col gap-0.5 text-[10px] text-gold-500/70">PU (F)
+                      <input type="number" value={l.unitPrice} onChange={e => setLine(i, 'unitPrice', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                    </label>
+                    <label className="flex flex-col gap-0.5 text-[10px] text-gold-500/70">Montant (F)
+                      <input type="number" value={l.amountExclTax} onChange={e => setLine(i, 'amountExclTax', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {editing && (
+            <button onClick={addLine} className="w-full px-3 py-2 text-xs text-gold-400 hover:text-gold-300 border-t border-white/5">
+              + Ajouter un article
+            </button>
+          )}
+        </div>
+      )}
+      {editing && lines.length === 0 && (
+        <button onClick={addLine} className="w-full mb-4 px-3 py-2 text-xs text-gold-400 hover:text-gold-300 border border-dashed border-gold-500/30 rounded-xl">
+          + Ajouter le détail des articles
+        </button>
       )}
       {status === 'error' && <p className="text-red-400 text-xs mb-2">Erreur lors de l'enregistrement.</p>}
       <div className="flex gap-2">

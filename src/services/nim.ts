@@ -110,7 +110,21 @@ const tools = [
           fecValid: { type: "boolean", description: 'Présence de QR code ou certification' },
           vendorName: { type: "string", description: 'Nom du tiers' },
           currency: { type: "string", description: 'Devise (ex: XOF, EUR, USD)' },
-          syscohadaCode: { type: "string", description: 'Code de Plan Comptable SYSCOHADA approprié' }
+          syscohadaCode: { type: "string", description: 'Code de Plan Comptable SYSCOHADA approprié' },
+          lineItems: {
+            type: "array",
+            description: "DÉTAIL LIGNE PAR LIGNE du document (chaque article/produit/service). OBLIGATOIRE pour tickets de caisse, factures multi-articles, reçus de supermarché.",
+            items: {
+              type: "object",
+              properties: {
+                description: { type: "string", description: "Nom de l'article" },
+                quantity: { type: "number", description: "Quantité" },
+                unitPrice: { type: "number", description: "Prix unitaire HT" },
+                amountExclTax: { type: "number", description: "Montant total HT de la ligne" }
+              },
+              required: ['description', 'quantity', 'unitPrice', 'amountExclTax']
+            }
+          }
         },
         required: ['type', 'amountExclTax', 'vatAmount', 'amountInclTax', 'date', 'category', 'fecValid', 'syscohadaCode']
       }
@@ -291,6 +305,16 @@ export function extractProposalBlock(text: string): any | null {
       const type = typeof parsed.type === 'string' ? parsed.type.toUpperCase() : '';
       const amountInclTax = Number(parsed.amountInclTax);
       if ((type === 'INCOME' || type === 'EXPENSE') && Number.isFinite(amountInclTax) && amountInclTax >= 0) {
+        const lineItems = Array.isArray(parsed.lineItems)
+          ? parsed.lineItems
+              .filter((l: any) => l && typeof l.description === 'string' && l.description.trim() !== '')
+              .map((l: any) => ({
+                description: String(l.description),
+                quantity: Number(l.quantity) || 1,
+                unitPrice: Number(l.unitPrice) || 0,
+                amountExclTax: Number(l.amountExclTax) || (Number(l.quantity) || 1) * (Number(l.unitPrice) || 0),
+              }))
+          : [];
         return {
           type,
           amountExclTax: Number(parsed.amountExclTax) || 0,
@@ -303,6 +327,7 @@ export function extractProposalBlock(text: string): any | null {
           vendorName: typeof parsed.vendorName === 'string' ? parsed.vendorName : '',
           currency: typeof parsed.currency === 'string' ? parsed.currency : 'XOF',
           syscohadaCode: typeof parsed.syscohadaCode === 'string' ? parsed.syscohadaCode : '',
+          ...(lineItems.length > 0 ? { lineItems } : {}),
           ...(typeof parsed.fraudSuspected === 'boolean' ? { fraudSuspected: parsed.fraudSuspected } : {}),
           ...(typeof parsed.fraudReason === 'string' ? { fraudReason: parsed.fraudReason } : {}),
         };
@@ -364,9 +389,10 @@ TES MISSIONS ET COMPORTEMENTS (AGENTIC & AUTO-AMÉLIORATION):
 3. ADAPTABILITÉ TYPE HERMES: Comprends et exécute les modifications demandées avec contexte et clairvoyance. Modifie ta façon d'analyser ou de présenter les données en fonction des retours itératifs de l'utilisateur, et explique pourquoi tes ajustements sont pertinents.
 4. ACTION IMMÉDIATE: Tu DOIS utiliser tes outils pour interagir directement avec l'application. Appelle toujours la fonction appropriée dès que possible au lieu de décrire l'action. Par exemple : si un document est fourni, extrais sa structure, et propose IMMÉDIATEMENT la transaction via \`propose_transaction\` sans demander la permission d'enregistrer d'abord.
    DOCUMENTS VISUELS (facture/reçu/ticket en image) : décris brièvement PUIS appelle OBLIGATOIREMENT \`propose_transaction\` avec TOUS les champs extraits (type, montants HT/TVA/TTC, date YYYY-MM-DD, vendeur, catégorie, code SYSCOHADA). Ne te contente JAMAIS de décrire l'image sans appeler l'outil.
-   SECOURS : si l'appel d'outil est impossible, termine ta réponse par un bloc JSON strict (aucun texte après) :
+   DÉTAIL OBLIGATOIRE : pour tout ticket de caisse, reçu de supermarché ou facture multi-articles, extrais CHAQUE ligne dans \`lineItems\` (description + quantité + prix unitaire + montant HT de la ligne). INTERDIT de résumer en un seul total : chaque article acheté doit apparaître. Vérifie que la somme des lignes ≈ montant HT déclaré.
+   SECOURS : si l'appel d'outil est impossible, termine ta réponse par un bloc JSON strict (aucun texte après), lignes incluses :
    \`\`\`propose_transaction
-   {"type":"EXPENSE","amountExclTax":100000,"vatAmount":18000,"amountInclTax":118000,"date":"2026-09-20","description":"...","category":"...","vendorName":"...","currency":"XOF","syscohadaCode":"..."}
+   {"type":"EXPENSE","amountExclTax":100000,"vatAmount":18000,"amountInclTax":118000,"date":"2026-09-20","description":"...","category":"...","vendorName":"...","currency":"XOF","syscohadaCode":"...","lineItems":[{"description":"Riz 5kg","quantity":2,"unitPrice":4500,"amountExclTax":9000}]}
    \`\`\`
 5. RÉPONSES CONCRÈTES: Utilise des faits précis issus des "Taxes Pré-calculées". Rejette le jargon trop théorique au profit de plans d'action chiffrés.
 
