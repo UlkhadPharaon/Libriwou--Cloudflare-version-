@@ -173,6 +173,13 @@ export function InvoicePage() {
           description: elements.map(e => `${e.quantity}x ${e.description}`).join(', '),
           fecFingerprint: fingerprint,
           createdAt: timestampStr,
+          // Miroir normalisé pour affichage uniforme (Dépenses, Hub) — invoiceData reste la source riche.
+          lineItems: elements.map(e => ({
+            description: e.description,
+            quantity: e.quantity,
+            unitPrice: e.unitPrice,
+            amountExclTax: calculateLineTotalHT(e),
+          })),
           invoiceData: {
             clientName,
             clientIfu,

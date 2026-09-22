@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ShoppingCart, Info, ArrowUpRight, ArrowDownRight, Plus, X, Pencil } from 'lucide-react';
+import { useState, useEffect, Fragment } from 'react';
+import { ShoppingCart, Info, ArrowUpRight, ArrowDownRight, Plus, X, Pencil, ChevronDown } from 'lucide-react';
 import { db } from '../firebase';
 import { localDb } from '../services/localDb';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,6 +8,7 @@ import { ExtractedTransaction } from '../services/nim';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
+import { LineItemsView } from '../components/LineItemsView';
 
 export function ExpensesPage() {
   const { user } = useAuth();
@@ -24,6 +25,18 @@ export function ExpensesPage() {
   const [newTxAmount, setNewTxAmount] = useState('');
   const [newTxCategory, setNewTxCategory] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Lignes d'articles détaillées (modal) + ligne dépliée (table)
+  type ModalLine = { description: string; quantity: string; unitPrice: string; amountExclTax: string };
+  const toModalLine = (l: any): ModalLine => ({
+    description: String(l?.description ?? ''),
+    quantity: String(l?.quantity ?? 1),
+    unitPrice: String(l?.unitPrice ?? ''),
+    amountExclTax: String(l?.amountExclTax ?? ''),
+  });
+  const [modalLines, setModalLines] = useState<ModalLine[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const setModalLine = (idx: number, key: keyof ModalLine, value: string) =>
+    setModalLines(prev => prev.map((l, i) => (i === idx ? { ...l, [key]: value } : l)));
 
   useEffect(() => {
     if (!user) return;
@@ -43,6 +56,7 @@ export function ExpensesPage() {
     setNewTxDesc('');
     setNewTxAmount('');
     setNewTxCategory('');
+    setModalLines([]);
     setShowModal(true);
   };
 
@@ -54,8 +68,24 @@ export function ExpensesPage() {
     setNewTxDesc(tx.description || '');
     setNewTxAmount(String(tx.amountExclTax || ''));
     setNewTxCategory(tx.category || '');
+    setModalLines(Array.isArray(tx.lineItems) ? tx.lineItems.map(toModalLine) : []);
     setShowModal(true);
   };
+
+  const cleanModalLines = () =>
+    modalLines
+      .filter(l => l.description.trim() !== '')
+      .map(l => {
+        const quantity = Number(l.quantity) || 1;
+        const unitPrice = Number(l.unitPrice) || 0;
+        const amt = Number(l.amountExclTax);
+        return {
+          description: l.description.trim(),
+          quantity,
+          unitPrice,
+          amountExclTax: Number.isFinite(amt) && amt > 0 ? amt : quantity * unitPrice,
+        };
+      });
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +95,7 @@ export function ExpensesPage() {
     try {
       const amountExclTax = Number(newTxAmount);
       
+      const lines = cleanModalLines();
       if (editingTx && editingTx.id) {
         localDb.update('transactions', editingTx.id, {
           type: newTxType,
@@ -75,6 +106,7 @@ export function ExpensesPage() {
           amountInclTax: amountExclTax,
           category: newTxCategory || (newTxType === 'INCOME' ? 'Vente de services/produits' : 'Dépense diverse'),
           syscohadaCode: newTxType === 'INCOME' ? '701' : '605',
+          lineItems: lines,
         });
       } else {
         const txData = {
@@ -90,7 +122,8 @@ export function ExpensesPage() {
           createdAt: new Date().toISOString(),
           paymentMethod: 'Cash', // Default
           syscohadaCode: newTxType === 'INCOME' ? '701' : '605',
-          fecFingerprint: 'MANUAL-' + Date.now() // Dummy ref
+          fecFingerprint: 'MANUAL-' + Date.now(), // Dummy ref
+          ...(lines.length > 0 ? { lineItems: lines } : {}),
         };
         localDb.add('transactions', txData);
       }
@@ -190,8 +223,12 @@ export function ExpensesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
-            {filteredTransactions.map(exp => (
-              <tr key={exp.id} className="hover:bg-luxury-800/80 transition-colors">
+            {filteredTransactions.map(exp => {
+              const hasLines = Array.isArray(exp.lineItems) && exp.lineItems.length > 0;
+              const isOpen = expandedId === exp.id;
+              return (
+              <Fragment key={exp.id}>
+              <tr className="hover:bg-luxury-800/80 transition-colors">
                 <td className="px-6 py-4">
                   {exp.type === 'INCOME' ? (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -226,12 +263,39 @@ export function ExpensesPage() {
                   )}
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <button onClick={() => openEditModal(exp)} className="text-zinc-400 hover:text-gold-400 transition-colors">
-                    <Pencil className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center justify-end gap-1">
+                    {hasLines && (
+                      <button
+                        onClick={() => setExpandedId(isOpen ? null : (exp.id as string))}
+                        title={isOpen ? 'Masquer le détail' : 'Voir le détail des articles'}
+                        className="text-zinc-400 hover:text-gold-400 transition-colors p-1"
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    )}
+                    <button onClick={() => openEditModal(exp)} className="text-zinc-400 hover:text-gold-400 transition-colors p-1">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
-            ))}
+              {isOpen && hasLines && (
+                <tr className="bg-luxury-900/60">
+                  <td colSpan={7} className="px-6 py-4">
+                    <div className="max-w-2xl space-y-2">
+                      <LineItemsView items={exp.lineItems} />
+                      {(exp.vatAmount || exp.amountInclTax) && (
+                        <p className="text-[11px] text-zinc-500 text-right font-mono">
+                          TVA {Number(exp.vatAmount || 0).toLocaleString('fr-FR')} F · TTC {Number(exp.amountInclTax || 0).toLocaleString('fr-FR')} F
+                        </p>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })}
             {filteredTransactions.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-6 py-12 text-center text-zinc-500 font-serif italic text-lg">
@@ -301,6 +365,38 @@ export function ExpensesPage() {
                 <div>
                   <label className="block text-xs font-medium text-gold-500/70 mb-1">Catégorie</label>
                   <input type="text" value={newTxCategory} onChange={(e) => setNewTxCategory(e.target.value)} className="w-full bg-black/30 border border-border-subtle rounded-xl px-4 py-2 text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" placeholder="Ex: Vente de marchandise..." />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-medium text-gold-500/70">Articles détaillés ({modalLines.length})</label>
+                    <button
+                      type="button"
+                      onClick={() => setModalLines(prev => [...prev, { description: '', quantity: '1', unitPrice: '', amountExclTax: '' }])}
+                      className="text-[11px] text-gold-400 hover:text-gold-300 font-medium"
+                    >
+                      + Ajouter
+                    </button>
+                  </div>
+                  {modalLines.length === 0 ? (
+                    <p className="text-[11px] text-zinc-500 italic">Aucun article — totaux uniquement.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {modalLines.map((l, i) => (
+                        <div key={i} className="flex flex-col gap-1.5 p-2 rounded-lg bg-black/20 border border-border-subtle">
+                          <div className="flex gap-1.5">
+                            <input value={l.description} onChange={(e) => setModalLine(i, 'description', e.target.value)} placeholder="Article" className="flex-1 min-w-0 bg-black/30 border border-border-subtle rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                            <button type="button" onClick={() => setModalLines(prev => prev.filter((_, j) => j !== i))} className="px-2 text-xs text-red-400 hover:text-red-300 border border-red-500/20 rounded-lg shrink-0">✕</button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            <input type="number" value={l.quantity} onChange={(e) => setModalLine(i, 'quantity', e.target.value)} placeholder="Qté" title="Quantité" className="bg-black/30 border border-border-subtle rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                            <input type="number" value={l.unitPrice} onChange={(e) => setModalLine(i, 'unitPrice', e.target.value)} placeholder="PU" title="Prix unitaire" className="bg-black/30 border border-border-subtle rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                            <input type="number" value={l.amountExclTax} onChange={(e) => setModalLine(i, 'amountExclTax', e.target.value)} placeholder="Montant" title="Montant HT" className="bg-black/30 border border-border-subtle rounded-lg px-2 py-1.5 text-xs text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2">

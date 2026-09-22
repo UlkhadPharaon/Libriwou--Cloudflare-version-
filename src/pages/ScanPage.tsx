@@ -24,6 +24,7 @@ import { collection, addDoc, query, where, getDocs, updateDoc, doc } from 'fireb
 import { ErrorReporter } from '../components/ErrorReporter';
 import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
 import { cn } from '../lib/utils';
+import { LineItemsView } from '../components/LineItemsView';
 
 interface ManualItem {
   description: string;
@@ -610,6 +611,12 @@ export function ScanPage() {
                       <DataField label={`Montant HT (${currency})`} value={extractedData.amountExclTax} onChange={(val) => setExtractedData({ ...extractedData, amountExclTax: Number(val) })} type="number" highlight />
                       <DataField label={`Montant de la TVA (${currency})`} value={extractedData.vatAmount} onChange={(val) => setExtractedData({ ...extractedData, vatAmount: Number(val) })} type="number" />
                       <DataField label={`Montant Total TTC (${currency})`} value={extractedData.amountInclTax} onChange={(val) => setExtractedData({ ...extractedData, amountInclTax: Number(val) })} type="number" />
+
+                      {Array.isArray(extractedData.lineItems) && extractedData.lineItems.length > 0 && (
+                        <div className="md:col-span-2">
+                          <LineItemsView items={extractedData.lineItems} currency={currency} />
+                        </div>
+                      )}
                       
                       {/* Sub-label for auto stock */}
                       <div className="md:col-span-2 flex items-center gap-3 py-2">
