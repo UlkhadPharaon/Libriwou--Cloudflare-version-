@@ -461,6 +461,15 @@ export function HubPage() {
                         messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
                     });
                 }
+            } else {
+                // sendChatMessage returns null on transport/parse failure — never stay silent.
+                const failMsg: Message = {
+                    id: (Date.now() + 2).toString() + i,
+                    role: 'model',
+                    text: "Désolé, je n'ai pas pu obtenir de réponse (connexion interrompue ou timeout). Vérifie ta connexion puis réessaie — si ça persiste, ouvre la console (F12) et regarde l'erreur /api/chat."
+                };
+                currentMessages = [...currentMessages, failMsg];
+                setMessages(currentMessages);
             }
         } catch (error) {
             console.error(error);
