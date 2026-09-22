@@ -76,7 +76,17 @@ export function HubPage() {
       const cached = localStorage.getItem('hub_messages_cache');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 1) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 1) {
+          // Assainit les pièces jointes corrompues par d'anciennes sauvegardes
+          // (File sérialisé en {} — faisait écran blanc au rechargement).
+          return parsed.map((m: any) => {
+            if (m && m.file && !(m.file instanceof Blob)) {
+              const { file, ...rest } = m;
+              return { ...rest, fileName: file?.name || m.fileName };
+            }
+            return m;
+          });
+        }
       }
     } catch {}
     return [{
@@ -164,11 +174,19 @@ export function HubPage() {
   const isWelcomeScreen = messages.length === 1 && !currentConversationId;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Persist messages to survive page navigation refresh / crash — restores conversation even if Firestore lags
+  // Persist messages to survive page navigation refresh / crash — restores conversation even if Firestore lags.
+  // NOTE : les objets File ne survivent pas à JSON.stringify (deviennent {}) et
+  // faisaient crasher le rendu au rechargement (msg.file.type undefined) — on ne
+  // garde que le nom du fichier.
   useEffect(() => {
     try {
       if (messages.length > 1) {
-        localStorage.setItem('hub_messages_cache', JSON.stringify(messages.slice(-50)));
+        const serializable = messages.slice(-50).map((m) => {
+          if (!m.file) return m;
+          const { file, ...rest } = m as any;
+          return { ...rest, fileName: (file as File)?.name || (m as any).fileName };
+        });
+        localStorage.setItem('hub_messages_cache', JSON.stringify(serializable));
         getHubPersist().messages = messages;
       }
     } catch {}
@@ -746,18 +764,18 @@ export function HubPage() {
               "flex flex-col gap-2 max-w-[85%]",
               msg.role === 'user' ? "items-end" : "items-start"
             )}>
-              {msg.file && (
+              {(msg.file instanceof Blob || (msg as any).fileName) && (
                 <div className="mb-2">
-                  {msg.file.type.startsWith('image/') ? (
-                    <img 
-                      src={URL.createObjectURL(msg.file)} 
-                      alt={msg.file.name} 
+                  {msg.file instanceof Blob && typeof msg.file.type === 'string' && msg.file.type.startsWith('image/') ? (
+                    <img
+                      src={URL.createObjectURL(msg.file)}
+                      alt={msg.file.name || 'Image jointe'}
                       className="max-w-[200px] max-h-[200px] rounded-lg shadow-md border border-border-subtle object-cover"
                     />
                   ) : (
                     <div className="flex items-center gap-2 bg-luxury-800/50 border border-border-subtle rounded-xl px-3 py-2 text-sm text-gold-100">
                       <FileText className="w-6 h-6 text-gold-500" />
-                      <span className="truncate max-w-[150px]">{msg.file.name}</span>
+                      <span className="truncate max-w-[150px]">{(msg.file as File)?.name || (msg as any).fileName || 'Fichier joint'}</span>
                     </div>
                   )}
                 </div>
