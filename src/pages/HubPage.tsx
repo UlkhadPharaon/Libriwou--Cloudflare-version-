@@ -1289,17 +1289,38 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
 }) {
   const { user } = useAuth();
   const [status, setStatus] = useState<'pending' | 'saved' | 'error'>(isAlreadySaved ? 'saved' : 'pending');
+  // Champs éditables — initialisés depuis l'analyse IA, modifiables avant enregistrement
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    type: args.type === 'INCOME' ? 'INCOME' : 'EXPENSE',
+    vendorName: args.vendorName || '',
+    amountExclTax: String(args.amountExclTax ?? ''),
+    vatAmount: String(args.vatAmount ?? ''),
+    amountInclTax: String(args.amountInclTax ?? ''),
+    date: args.date || new Date().toISOString().split('T')[0],
+    category: args.category || '',
+    syscohadaCode: args.syscohadaCode || '',
+    description: args.description || '',
+  });
+  const setField = (key: keyof typeof form, value: string) =>
+    setForm(prev => ({ ...prev, [key]: value }));
 
   const handleConfirm = async () => {
     if (!user) return;
     try {
-      // Force numeric conversion
+      // Force numeric conversion (depuis les champs édités)
       const transactionData = {
         ...args,
-        amountExclTax: Number(args.amountExclTax) || 0,
-        vatAmount: Number(args.vatAmount) || 0,
-        tvaAmount: Number(args.vatAmount) || 0,
-        amountInclTax: Number(args.amountInclTax) || 0,
+        type: form.type,
+        vendorName: form.vendorName,
+        amountExclTax: Number(form.amountExclTax) || 0,
+        vatAmount: Number(form.vatAmount) || 0,
+        tvaAmount: Number(form.vatAmount) || 0,
+        amountInclTax: Number(form.amountInclTax) || 0,
+        date: form.date,
+        category: form.category,
+        syscohadaCode: form.syscohadaCode,
+        description: form.description,
         userId: user.uid,
         createdAt: new Date().toISOString(),
         fecFingerprint: `NEO-${Date.now()}`,
@@ -1310,13 +1331,13 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
       // 1) PRIMARY: Local-first save (IndexedDB) — visible immediately in Dépenses / Journal / Vault
       localDb.add('transactions', transactionData);
 
-      // 2) BEST-EFFORT: Cloud sync to Firestore (for multi-device / backup)
+      // 2) BEST-EFFORT: Cloud sync to Firestore (for multi-device / backup).
+      // Non bloquant : la sauvegarde locale a déjà réussi. Ne jamais lever ici
+      // (handleFirestoreError throw — cela afficherait "erreur" à tort).
       try {
         await addDoc(collection(db, 'transactions'), transactionData);
       } catch (error) {
-        // Non-blocking: local save already succeeded. Log for diagnostics.
         console.warn('[Neo] Firestore sync failed (local save preserved):', error);
-        handleFirestoreError(error, OperationType.CREATE, 'transactions');
       }
       setStatus('saved');
 
@@ -1357,11 +1378,11 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
           <span className="text-sm font-medium text-gold-100">Transaction enregistrée avec succès</span>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <ResultItem label="Type" value={args.type === 'EXPENSE' ? 'Dépense' : 'Revenu'} />
-          <ResultItem label="Montant HT" value={`${args.amountExclTax} FCFA`} />
-          <ResultItem label="TVA" value={`${args.vatAmount} FCFA`} />
-          <ResultItem label="Catégorie" value={args.category} />
-          {args.syscohadaCode && <ResultItem label="Compte SYSCOHADA" value={args.syscohadaCode} />}
+          <ResultItem label="Type" value={form.type === 'EXPENSE' ? 'Dépense' : 'Revenu'} />
+          <ResultItem label="Montant HT" value={`${form.amountExclTax} FCFA`} />
+          <ResultItem label="TVA" value={`${form.vatAmount} FCFA`} />
+          <ResultItem label="Catégorie" value={form.category} />
+          {form.syscohadaCode && <ResultItem label="Compte SYSCOHADA" value={form.syscohadaCode} />}
         </div>
       </>
     );
@@ -1386,22 +1407,65 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <ResultItem label="Type" value={args.type === 'EXPENSE' ? 'Dépense' : 'Revenu'} />
-        <ResultItem label="Fournisseur/Client" value={args.vendorName || 'N/A'} />
-        <ResultItem label="Montant HT" value={`${args.amountExclTax} FCFA`} />
-        <ResultItem label="TVA" value={`${args.vatAmount} FCFA`} />
-        <ResultItem label="Montant TTC" value={`${args.amountInclTax} FCFA`} />
-        <ResultItem label="Catégorie" value={args.category} />
-        {args.syscohadaCode && <ResultItem label="Compte SYSCOHADA" value={args.syscohadaCode} />}
-      </div>
+      {!editing ? (
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <ResultItem label="Type" value={form.type === 'EXPENSE' ? 'Dépense' : 'Revenu'} />
+          <ResultItem label="Fournisseur/Client" value={form.vendorName || 'N/A'} />
+          <ResultItem label="Montant HT" value={`${form.amountExclTax} FCFA`} />
+          <ResultItem label="TVA" value={`${form.vatAmount} FCFA`} />
+          <ResultItem label="Montant TTC" value={`${form.amountInclTax} FCFA`} />
+          <ResultItem label="Catégorie" value={form.category} />
+          {form.syscohadaCode && <ResultItem label="Compte SYSCOHADA" value={form.syscohadaCode} />}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">Type
+            <select value={form.type} onChange={e => setField('type', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40">
+              <option value="EXPENSE">Dépense</option>
+              <option value="INCOME">Revenu</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">Fournisseur/Client
+            <input value={form.vendorName} onChange={e => setField('vendorName', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">Montant HT (FCFA)
+            <input type="number" value={form.amountExclTax} onChange={e => setField('amountExclTax', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">TVA (FCFA)
+            <input type="number" value={form.vatAmount} onChange={e => setField('vatAmount', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">Montant TTC (FCFA)
+            <input type="number" value={form.amountInclTax} onChange={e => setField('amountInclTax', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">Date
+            <input type="date" value={form.date} onChange={e => setField('date', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">Catégorie
+            <input value={form.category} onChange={e => setField('category', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gold-500/70">Compte SYSCOHADA
+            <input value={form.syscohadaCode} onChange={e => setField('syscohadaCode', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+          <label className="col-span-2 flex flex-col gap-1 text-xs text-gold-500/70">Description
+            <input value={form.description} onChange={e => setField('description', e.target.value)} className="bg-black/40 border border-gold-500/20 rounded-lg px-3 py-2 text-sm text-gold-100 focus:outline-none focus:ring-2 focus:ring-gold-500/40" />
+          </label>
+        </div>
+      )}
       {status === 'error' && <p className="text-red-400 text-xs mb-2">Erreur lors de l'enregistrement.</p>}
-      <button 
-        onClick={handleConfirm}
-        className="w-full py-2.5 bg-gradient-to-r from-gold-500 to-gold-400 text-zinc-900 rounded-xl text-sm font-semibold hover:from-gold-400 hover:to-gold-300 transition-all duration-300 shadow-[0_0_15px_rgba(212,175,55,0.2)]"
-      >
-        Confirmer et enregistrer
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setEditing(v => !v)}
+          className="flex-1 py-2.5 bg-white/5 text-white border border-white/10 rounded-xl text-sm font-semibold hover:bg-white/10 transition-all duration-300"
+        >
+          {editing ? 'Aperçu' : 'Modifier'}
+        </button>
+        <button
+          onClick={handleConfirm}
+          className="flex-[2] py-2.5 bg-gradient-to-r from-gold-500 to-gold-400 text-zinc-900 rounded-xl text-sm font-semibold hover:from-gold-400 hover:to-gold-300 transition-all duration-300 shadow-[0_0_15px_rgba(212,175,55,0.2)]"
+        >
+          Confirmer et enregistrer
+        </button>
+      </div>
     </>
   );
 }

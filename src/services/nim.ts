@@ -268,6 +268,50 @@ const tools = [
   }
 ];
 
+/**
+ * Extrait un bloc de proposition ```propose_transaction {...} ``` (ou un objet
+ * JSON brut contenant les champs d'une transaction) du texte de l'assistant.
+ * Retourne null si aucun bloc valide (type + montants numériques requis).
+ */
+export function extractProposalBlock(text: string): any | null {
+  if (!text) return null;
+  const candidates: string[] = [];
+  const fenced = text.match(/```propose_transaction\s*([\s\S]*?)```/i);
+  if (fenced) candidates.push(fenced[1]);
+  // Dernier recours : le plus grand objet JSON du texte
+  const objMatch = text.match(/\{[\s\S]*"amountInclTax"[\s\S]*\}/);
+  if (objMatch) candidates.push(objMatch[0]);
+
+  for (const raw of candidates) {
+    try {
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
+      if (start === -1 || end === -1 || end <= start) continue;
+      const parsed = JSON.parse(raw.substring(start, end + 1));
+      const type = typeof parsed.type === 'string' ? parsed.type.toUpperCase() : '';
+      const amountInclTax = Number(parsed.amountInclTax);
+      if ((type === 'INCOME' || type === 'EXPENSE') && Number.isFinite(amountInclTax) && amountInclTax >= 0) {
+        return {
+          type,
+          amountExclTax: Number(parsed.amountExclTax) || 0,
+          vatAmount: Number(parsed.vatAmount) || 0,
+          amountInclTax,
+          date: typeof parsed.date === 'string' ? parsed.date : new Date().toISOString().split('T')[0],
+          description: typeof parsed.description === 'string' ? parsed.description : '',
+          category: typeof parsed.category === 'string' ? parsed.category : 'Divers',
+          fecValid: parsed.fecValid !== false,
+          vendorName: typeof parsed.vendorName === 'string' ? parsed.vendorName : '',
+          currency: typeof parsed.currency === 'string' ? parsed.currency : 'XOF',
+          syscohadaCode: typeof parsed.syscohadaCode === 'string' ? parsed.syscohadaCode : '',
+          ...(typeof parsed.fraudSuspected === 'boolean' ? { fraudSuspected: parsed.fraudSuspected } : {}),
+          ...(typeof parsed.fraudReason === 'string' ? { fraudReason: parsed.fraudReason } : {}),
+        };
+      }
+    } catch { /* candidat invalide : on essaie le suivant */ }
+  }
+  return null;
+}
+
 export async function sendChatMessage(
   history: { role: 'user' | 'model', text: string }[],
   newMessage: string,
@@ -319,6 +363,11 @@ TES MISSIONS ET COMPORTEMENTS (AGENTIC & AUTO-AMÉLIORATION):
 2. CRÉATION ET GESTION DE SKILLS: Tu conçois, apprends et utilises de nouvelles "skills" au fur et à mesure que les utilisateurs partagent des modèles (dans "Mes Modèles & Références") ou posent de nouvelles problématiques métiers. Retiens les règles structurelles partagées (vision/analyse) pour générer ultérieurement des documents sur ce même format.
 3. ADAPTABILITÉ TYPE HERMES: Comprends et exécute les modifications demandées avec contexte et clairvoyance. Modifie ta façon d'analyser ou de présenter les données en fonction des retours itératifs de l'utilisateur, et explique pourquoi tes ajustements sont pertinents.
 4. ACTION IMMÉDIATE: Tu DOIS utiliser tes outils pour interagir directement avec l'application. Appelle toujours la fonction appropriée dès que possible au lieu de décrire l'action. Par exemple : si un document est fourni, extrais sa structure, et propose IMMÉDIATEMENT la transaction via \`propose_transaction\` sans demander la permission d'enregistrer d'abord.
+   DOCUMENTS VISUELS (facture/reçu/ticket en image) : décris brièvement PUIS appelle OBLIGATOIREMENT \`propose_transaction\` avec TOUS les champs extraits (type, montants HT/TVA/TTC, date YYYY-MM-DD, vendeur, catégorie, code SYSCOHADA). Ne te contente JAMAIS de décrire l'image sans appeler l'outil.
+   SECOURS : si l'appel d'outil est impossible, termine ta réponse par un bloc JSON strict (aucun texte après) :
+   \`\`\`propose_transaction
+   {"type":"EXPENSE","amountExclTax":100000,"vatAmount":18000,"amountInclTax":118000,"date":"2026-09-20","description":"...","category":"...","vendorName":"...","currency":"XOF","syscohadaCode":"..."}
+   \`\`\`
 5. RÉPONSES CONCRÈTES: Utilise des faits précis issus des "Taxes Pré-calculées". Rejette le jargon trop théorique au profit de plans d'action chiffrés.
 
 COMPÉTENCES ACTIVES APPRISES (AGENT SKILLS):
@@ -340,11 +389,12 @@ STYLE: Décisif, expert, autonome et en constante auto-amélioration. N'attends 
     
     let finalContent: any[] | string = newMessage;
     
+    const VISION_NUDGE = "Analyse ce document (facture/reçu/ticket) : extrais type, montants HT/TVA/TTC, date, vendeur, catégorie et code SYSCOHADA, puis appelle IMMÉDIATEMENT l'outil propose_transaction avec ces valeurs. N'affiche jamais les chiffres uniquement dans le texte sans appeler l'outil.";
     if (file && file.type.startsWith('image/')) {
         try {
             const base64 = await fileToBase64(file);
             finalContent = [
-                { type: "text", text: newMessage || "Voici un document." },
+                { type: "text", text: `${newMessage || "Voici un document."}\n\n${VISION_NUDGE}` },
                 { type: "image_url", image_url: { url: `data:${file.type};base64,${base64}` } }
             ];
         } catch (e) {
@@ -352,7 +402,7 @@ STYLE: Décisif, expert, autonome et en constante auto-amélioration. N'attends 
             finalContent = newMessage;
         }
     } else if (extractedText) {
-        finalContent = `${newMessage}\n\nCONTENU DU DOCUMENT EXTRAIT :\n---\n${extractedText}\n---`;
+        finalContent = `${newMessage}\n\nCONTENU DU DOCUMENT EXTRAIT :\n---\n${extractedText}\n---\n\n${VISION_NUDGE}`;
     }
 
     if (finalContent || (Array.isArray(finalContent) && finalContent.length > 0)) {
@@ -447,6 +497,22 @@ STYLE: Décisif, expert, autonome et en constante auto-amélioration. N'attends 
       assistantMessage?.content ||
       (assistantMessage as any)?.reasoning ||
       (allActions.length > 0 ? "J'ai effectué les actions demandées." : "Je n'ai pas pu générer de réponse.");
+
+    // SECOURS proposition : si le modèle a décrit un document sans appeler l'outil
+    // (bloc ```propose_transaction {...}), on synthétise l'action pour que le
+    // popup interactif s'affiche quand même.
+    if (allActions.length === 0 && actionHandler && typeof fallbackText === 'string') {
+      const proposal = extractProposalBlock(fallbackText);
+      if (proposal) {
+        try {
+          const result = await actionHandler('propose_transaction', proposal);
+          allActions.push({ name: 'propose_transaction', args: proposal, result });
+        } catch (e) {
+          console.warn("Proposal fallback handler failed:", e);
+          allActions.push({ name: 'propose_transaction', args: proposal, result: { success: true, status: 'proposed_to_user' } });
+        }
+      }
+    }
 
     return {
         text: fallbackText,
