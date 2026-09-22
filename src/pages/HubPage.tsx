@@ -398,22 +398,31 @@ export function HubPage() {
         setMessages(currentMessages);
 
         let convId = currentConversationId;
-        if (!convId && user && !isEphemeralMode) {
-            const docRef = await addDoc(collection(db, 'conversations'), {
-                userId: user.uid,
-                title: userMsg.text.slice(0, 30) + (userMsg.text.length > 30 ? '...' : '') || 'Nouvelle discussion',
-                updatedAt: new Date().toISOString(),
-                projectId: activeProjectId,
-                isEphemeral: false,
-                messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
-            });
-            convId = docRef.id;
-            setCurrentConversationId(convId);
-        } else if (convId && !isEphemeralMode) {
-            await updateDoc(doc(db, 'conversations', convId), {
-                updatedAt: new Date().toISOString(),
-                messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
-            });
+        // Persistence must NEVER block the answer: the shared beta account can be
+        // denied by Firestore rules (unverified email / shared uid) and an await
+        // throwing here used to abort handleSend before the AI call — stuck typing.
+        try {
+            if (!convId && user && !isEphemeralMode) {
+                const docRef = await addDoc(collection(db, 'conversations'), {
+                    userId: user.uid,
+                    title: userMsg.text.slice(0, 30) + (userMsg.text.length > 30 ? '...' : '') || 'Nouvelle discussion',
+                    updatedAt: new Date().toISOString(),
+                    projectId: activeProjectId,
+                    isEphemeral: false,
+                    messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
+                });
+                convId = docRef.id;
+                setCurrentConversationId(convId);
+            } else if (convId && !isEphemeralMode) {
+                await updateDoc(doc(db, 'conversations', convId), {
+                    updatedAt: new Date().toISOString(),
+                    messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
+                });
+            }
+        } catch (persistError) {
+            // NOTE: handleFirestoreError re-throws, so only log here — the answer must still be delivered.
+            console.warn("[Hub] Conversation persistence failed, continuing without save:", persistError);
+            convId = null;
         }
 
         try {
