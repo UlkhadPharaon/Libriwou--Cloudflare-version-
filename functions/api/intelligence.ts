@@ -41,11 +41,12 @@ export const onRequestPost = async ({ request, env }: any) => {
 
   if (!openrouterKey || !tavilyKey) {
     console.warn("API Keys missing in /api/intelligence. Returning mock data.");
-    return Response.json({ news: generateMockNews(sector, date) });
+    return Response.json({ news: generateMockNews(sector, date), source: "mock", error: "missing_keys" });
   }
-  
+
   try {
-      // 1. Tavily Search — pertinence renforcée : 3 requêtes ciblées en parallèle pour couvrir fiscal + opportunités + secteur
+      // 1. Tavily Search — 3 requêtes ciblées en PARALLÈLE (fiscal + opportunités + secteur).
+      // Parallèle = meilleure couverture que le OR unique, et résilient (1 échec n'aborte pas tout).
       const sectorLabel = sector && sector !== 'Général' ? sector : 'PME';
       const baseQuery = `Burkina Faso UEMOA ${date?.slice(0,4) || '2026'}`;
       const queries = [
@@ -53,35 +54,58 @@ export const onRequestPost = async ({ request, env }: any) => {
         `opportunités financement subvention appel d'offres PME ${baseQuery}`,
         `${sectorLabel} innovation marché économie ${baseQuery}`
       ];
-      // Use first query for now but with advanced depth + sector inclusion + time filter
-      const searchQuery = queries.join(' | ');
-      
-      const tavilyResponse = await fetch('https://api.tavily.com/search', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${tavilyKey}`
-          },
-          body: JSON.stringify({
-              query: searchQuery,
-              search_depth: "advanced",
-              include_answer: true,
-              include_raw_content: false,
-              max_results: 12
-          })
-      });
 
-      if (!tavilyResponse.ok) {
-           const txt = await tavilyResponse.text().catch(()=> "");
-           console.warn(`Tavily failed ${tavilyResponse.status}: ${txt.slice(0,400)}`);
-           throw new Error('Erreur Tavily API');
+      const runQuery = async (q: string) => {
+        try {
+          const res = await fetch('https://api.tavily.com/search', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${tavilyKey}`
+              },
+              body: JSON.stringify({
+                  api_key: tavilyKey,
+                  query: q,
+                  search_depth: "advanced",
+                  include_answer: false,
+                  include_raw_content: false,
+                  max_results: 5
+              }),
+              signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(15000) : undefined,
+          });
+          if (!res.ok) {
+             const txt = await res.text().catch(()=> "");
+             console.warn(`Tavily query failed ${res.status} for "${q.slice(0,40)}": ${txt.slice(0,200)}`);
+             return [];
+          }
+          const data: any = await res.json();
+          return Array.isArray(data?.results) ? data.results : [];
+        } catch (e) {
+          console.warn(`Tavily query error for "${q.slice(0,40)}":`, (e as any)?.message || e);
+          return [];
+        }
+      };
+
+      const settled = await Promise.all(queries.map(runQuery));
+      // Merge + déduplique par URL (garde l'ordre fiscal > opportunités > secteur)
+      const seen = new Set<string>();
+      const merged: any[] = [];
+      for (const list of settled) {
+        for (const r of list) {
+          const key = (r?.url || r?.title || "").toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          merged.push(r);
+          if (merged.length >= 12) break;
+        }
+        if (merged.length >= 12) break;
       }
 
-      const tavilyData: any = await tavilyResponse.json();
-      let searchResultsText = "";
-      if (tavilyData && tavilyData.results) {
-         searchResultsText = tavilyData.results.map((r: any) => `Titre: ${r.title}\nURL: ${r.url}\nExtrait: ${r.snippet || r.content || ''}`).join('\n\n');
-      }
+      if (merged.length === 0) throw new Error('Tavily: aucun résultat (3 requêtes vides ou en échec)');
+
+      let searchResultsText = merged
+        .map((r: any) => `Titre: ${r.title}\nURL: ${r.url}\nExtrait: ${r.snippet || r.content || ''}`)
+        .join('\n\n');
 
       // 2. OpenRouter (unified VL model)
       const openai = new OpenAI({
@@ -131,33 +155,63 @@ NE RENVOIE AUCUN TEXTE en dehors du bloc JSON. Assure-toi de la validité strict
           temperature: 0.1,
       });
 
-      let text = dsResponse.choices[0]?.message?.content || "";
+      // Modèles reasoning (ling-3.0-flash-vl) : le contenu peut être dans `reasoning`
+      // si tronqué — fallback gracieux + strip des fences ```json.
+      const msg: any = (dsResponse as any).choices[0]?.message;
+      let text = msg?.content || msg?.reasoning || "";
       if (!text) {
           throw new Error("L'IA n'a renvoyé aucune réponse.");
       }
-      
-      let jsonText = text;
-      const firstBrace = text.indexOf('{');
-      const lastBrace = text.lastIndexOf('}');
-      
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          jsonText = text.substring(firstBrace, lastBrace + 1);
+
+      let jsonText = text.replace(/```(?:json)?\s*/gi, "").replace(/```\s*/g, "");
+      const firstBrace = jsonText.indexOf('{');
+      const firstBracket = jsonText.indexOf('[');
+      let start = firstBrace;
+      if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) start = firstBracket;
+      const lastBrace = jsonText.lastIndexOf('}');
+      const lastBracket = jsonText.lastIndexOf(']');
+      let end = lastBrace;
+      if (lastBracket > end) end = lastBracket;
+
+      if (start !== -1 && end !== -1 && end > start) {
+          jsonText = jsonText.substring(start, end + 1);
       }
 
       let parsedData;
       try {
          parsedData = JSON.parse(jsonText.trim());
       } catch (e) {
-         console.error("AI JSON parse failed. Full text received:", text);
+         console.error("AI JSON parse failed. Full text received:", text.slice(0, 1000));
          throw new Error("L'IA a renvoyé une structure JSON invalide. Essayez de rafraîchir.");
       }
-      
-      const generatedNews = parsedData.news || (Array.isArray(parsedData) ? parsedData : []);
-      
-      return Response.json({ news: generatedNews });
+
+      let generatedNews = parsedData.news || (Array.isArray(parsedData) ? parsedData : []);
+      // Normalisation : exactement 5 items valides (catégorie + date + targetSectors garantis)
+      const validCats = new Set(["FISCAL", "OPPORTUNITY", "MARKET", "TECH"]);
+      generatedNews = (Array.isArray(generatedNews) ? generatedNews : [])
+        .filter((n: any) => n && typeof n.title === "string" && typeof n.excerpt === "string")
+        .slice(0, 5)
+        .map((n: any) => ({
+          title: n.title,
+          excerpt: n.excerpt,
+          category: validCats.has(n.category) ? n.category : "MARKET",
+          date: typeof n.date === "string" && n.date ? n.date : date,
+          url: typeof n.url === "string" ? n.url : "",
+          targetSectors: Array.isArray(n.targetSectors) && n.targetSectors.length > 0
+            ? n.targetSectors.map(String)
+            : ["GLOBAL"],
+        }));
+
+      if (generatedNews.length === 0) throw new Error("L'IA n'a produit aucune news valide.");
+
+      return Response.json({ news: generatedNews, source: "live" });
 
   } catch (error) {
       console.error("Erreur gérée dans /api/intelligence :", error);
-      return Response.json({ news: generateMockNews(sector, date) });
+      return Response.json({
+        news: generateMockNews(sector, date),
+        source: "mock",
+        error: (error as any)?.message || "intelligence_fallback",
+      });
   }
 };
