@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { auth, db } from '../firebase';
-import { localDb } from '../services/localDb';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe } from '../services/repo';
 import { ExtractedTransaction } from '../services/nim';
 import { FolderLock, Download, FileArchive, CheckCircle2, ShieldCheck, FileText, Calendar, Search, Filter, Hash, ExternalLink, Activity, ArrowUpRight, ArrowDownRight, Tag } from 'lucide-react';
 import JSZip from 'jszip';
@@ -14,6 +14,7 @@ const formatXOF = (amount: number) => {
 };
 
 export function VaultPage() {
+  const { userId } = useAuth();
   const [transactions, setTransactions] = useState<ExtractedTransaction[]>([]);
   const [company, setCompany] = useState<any>(null);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -24,28 +25,19 @@ export function VaultPage() {
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!userId) return;
 
-    const unsubCompany = localDb.subscribe('companies', user.uid, (list) => {
-      if (list.length > 0) setCompany(list[0] as any);
-      else {
-        // Fallback: try Firestore once (legacy profiles)
-        import('firebase/firestore').then(({ doc, getDoc }) => {
-          getDoc(doc(db, 'companies', user.uid)).then(snap => {
-            if (snap.exists()) setCompany(snap.data());
-          });
-        });
-      }
+    const unsubCompany = subscribe('companies', (rows) => {
+      if (rows.length > 0) setCompany(rows[0] as any);
     });
-    const unsubTx = localDb.subscribe('transactions', user.uid, (list) => {
-      setTransactions(list as ExtractedTransaction[]);
+    const unsubTx = subscribe('transactions', (rows) => {
+      setTransactions(rows as ExtractedTransaction[]);
     });
     return () => {
       unsubCompany();
       unsubTx();
     };
-  }, []);
+  }, [userId]);
 
   const years = Array.from(new Set(transactions.map(t => new Date(t.date).getFullYear()))).sort((a, b) => b - a);
   if (!years.includes(new Date().getFullYear())) {

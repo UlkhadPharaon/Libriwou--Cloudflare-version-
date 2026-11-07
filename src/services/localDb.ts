@@ -1,5 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { encryptedVaultSchema, validate, type EncryptedVault } from '../lib/schemas';
 
 type Listener = (data: any[]) => void;
 
@@ -132,6 +131,10 @@ class LocalDatabase {
       this.dbInstance = e.target.result;
       this.isIndexedDbReady = true;
       this.loadAllFromIndexedDB().then(() => {
+        // BUGFIX: subscribers that registered before the async IndexedDB load
+        // finished received an EMPTY array and were never re-notified. Emit once
+        // every collection is hydrated from storage.
+        this.notifyAll();
         this.onReadyCallbacks.forEach(cb => cb());
         this.onReadyCallbacks = [];
       });
@@ -387,6 +390,27 @@ class LocalDatabase {
     }
   }
 
+  /** Re-emits every active subscription with the freshly hydrated cache. */
+  private notifyAll(): void {
+    for (const [key] of this.listeners.entries()) {
+      const col = key.split(':')[0];
+      this.notify(col);
+    }
+  }
+
+  /**
+   * Runs `cb` once the in-memory cache has been hydrated from IndexedDB (or
+   * immediately if it already has). Used to kill the startup race where a read
+   * returned an empty array before storage finished loading.
+   */
+  public whenReady(cb: () => void): void {
+    if (this.isIndexedDbReady && this.ramCache.size > 0) {
+      cb();
+      return;
+    }
+    this.onReadyCallbacks.push(cb);
+  }
+
   // --- Secure Multi-Device cloud sync (Zero-Knowledge) ---
   public async exportLocalPayload(userId: string): Promise<string> {
     const payload: Record<string, any[]> = {};
@@ -422,29 +446,47 @@ class LocalDatabase {
     }
   }
 
-  // Back up locally-encrypted data to Firebase Cloud Storage (Zero-Knowledge)
-  public async uploadEncryptedCloudBackup(userId: string, passphrase: string): Promise<void> {
+  /**
+   * Zero-knowledge backup to a FILE chosen by the user (Download / File System Access).
+   *
+   * The cloud path was removed with Firebase: no backend exists yet, and a
+   * "cloud backup" that writes to a shared third-party project would be a lie.
+   * The ciphertext format is unchanged, so a future backend can store exactly the
+   * same blob — see `restoreEncryptedBackup`.
+   */
+  public async createEncryptedCloudBackup(userId: string, passphrase: string): Promise<EncryptedVault> {
     const payloadText = await this.exportLocalPayload(userId);
     const encryptedText = await encryptData(payloadText, passphrase);
-    
-    await setDoc(doc(db, 'encrypted_fiscal_vaults', userId), {
-      userId,
-      ciphertext: encryptedText,
-      updatedAt: new Date().toISOString(),
-      integrity: "SHA256-AESGCM-ZK"
-    });
+
+    return validate(
+      encryptedVaultSchema,
+      {
+        userId,
+        ciphertext: encryptedText,
+        algorithm: 'AES-GCM-256',
+        updatedAt: new Date().toISOString(),
+      },
+      'encrypted_vault (local)'
+    );
   }
 
-  // Restore and decrypt data from cloud
-  public async restoreEncryptedCloudBackup(userId: string, passphrase: string): Promise<void> {
-    const docRef = doc(db, 'encrypted_fiscal_vaults', userId);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) {
-      throw new Error("Aucun coffre-fort chiffré trouvé sur le cloud pour votre compte.");
+  /** Restores a backup produced by `createEncryptedCloudBackup`. */
+  public async restoreEncryptedBackup(ciphertext: string, passphrase: string): Promise<void> {
+    if (!ciphertext || ciphertext.length < 32) {
+      throw new Error("Sauvegarde invalide ou vide.");
     }
-    const data = snap.data();
-    const decryptedPayload = await decryptData(data.ciphertext, passphrase);
-    await this.importLocalPayload(decryptedPayload, userId);
+    const decryptedPayload = await decryptData(ciphertext, passphrase);
+    const owner = this.getBackupOwner();
+    if (!owner) {
+      throw new Error(
+        "Aucune entreprise locale trouvée : impossible d'associer la sauvegarde à un profil."
+      );
+    }
+    await this.importLocalPayload(decryptedPayload, owner);
+  }
+
+  private getBackupOwner(): string {
+    return (this.getAll('companies')[0] as any)?.userId || '';
   }
 }
 

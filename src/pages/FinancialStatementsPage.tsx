@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import { localDb } from '../services/localDb';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe } from '../services/repo';
 import { BookOpen, FileText, Download, Building2, BarChart3, Presentation, Filter, Table2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -24,21 +23,17 @@ export function FinancialStatementsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'grand-livre' | 'bilan' | 'resultat'>('grand-livre');
   const [company, setCompany] = useState<any>(null);
+  const { userId } = useAuth();
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!userId) return;
 
-    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
-        if (list.length > 0) setCompany(list[0] as any);
-        else {
-          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
-            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
-          });
-        }
+    const unsubscribeCompany = subscribe<any>('companies', (rows) => {
+        const comp = (rows[0] as any) || null;
+        if (comp) setCompany(comp);
     });
 
-    const unsubscribe = localDb.subscribe('transactions', user.uid, (txs) => {
+    const unsubscribe = subscribe<any[]>('transactions', (txs) => {
       const generatedEntries: JournalEntry[] = [];
       
       txs.forEach((data: any) => {
@@ -88,7 +83,7 @@ export function FinancialStatementsPage() {
       unsubscribe();
       unsubscribeCompany();
     };
-  }, []);
+  }, [userId]);
 
   // ====== CALCULATIONS ======
   // Grand Livre: group entries by account number

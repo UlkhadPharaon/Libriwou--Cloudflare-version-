@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { auth } from '../firebase';
 import { localDb } from '../services/localDb';
+import { useAuth } from '../contexts/AuthContext';
 import { BookOpen, FileText, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -18,13 +18,14 @@ interface JournalEntry {
 }
 
 export function JournalPage() {
+  const { userId } = useAuth();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    if (!userId) return;
 
-    const unsubscribe = localDb.subscribe('transactions', auth.currentUser.uid, (transactionsList) => {
+    const unsubscribe = localDb.subscribe('transactions', userId, (transactionsList) => {
       const generatedEntries: JournalEntry[] = [];
       
       transactionsList.forEach((data) => {
@@ -107,7 +108,7 @@ export function JournalPage() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [userId]);
 
   const totalDebit = entries.reduce((acc, curr) => acc + (curr.debit || 0), 0);
   const totalCredit = entries.reduce((acc, curr) => acc + (curr.credit || 0), 0);

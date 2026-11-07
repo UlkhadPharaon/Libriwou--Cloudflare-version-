@@ -1,23 +1,23 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { auth } from '../firebase';
-import { localDb } from '../services/localDb';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe } from '../services/repo';
 import { TrendingUp, TrendingDown, Activity, AlertCircle, Sparkles } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 export function CashflowPage() {
+  const { userId } = useAuth();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-    const unsub = localDb.subscribe('transactions', user.uid, (list) => {
-      setTransactions(list as any[]);
+    if (!userId) return;
+    const unsub = subscribe<any[]>('transactions', (list) => {
+      setTransactions(list);
       setLoading(false);
     });
     return () => unsub();
-  }, []);
+  }, [userId]);
 
   const chartData = useMemo(() => {
     if (!transactions.length) return [];

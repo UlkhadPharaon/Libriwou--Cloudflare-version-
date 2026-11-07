@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { useTranslation } from 'react-i18next';
+import { subscribe } from '../services/repo';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface TaxDeadline {
   id: string;
@@ -9,54 +10,56 @@ export interface TaxDeadline {
   daysRemaining: number;
 }
 
+/**
+ * Upcoming fiscal deadlines for the signed-in company.
+ *
+ * Reads the company profile from the local repository (was a Firestore
+ * `onSnapshot` on `companies/{uid}`). With no backend, this is a pure local read.
+ */
 export function useTaxNotifications() {
+  const { userId } = useAuth();
   const [deadlines, setDeadlines] = useState<TaxDeadline[]>([]);
   const [daysBefore, setDaysBefore] = useState<number>(7);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) return;
+    if (!userId) {
+      setDeadlines([]);
+      return;
+    }
 
-      const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-          const compData = docSnap.data();
-          const settings = compData.notificationSettings || { daysBefore: 7 };
-          setDaysBefore(settings.daysBefore);
-          
-          const regime = compData.taxRegime;
-          
-          // Using logic similar to CalendarPage
-          const today = new Date();
-          const year = today.getFullYear();
-          const month = today.getMonth();
-          
-          const generatedDeadlines: TaxDeadline[] = [];
-          
-          // Logic to generate upcoming deadlines (simplified copy from CalendarPage)
-          if (regime === 'RSI' || regime === 'RNI') {
-            generatedDeadlines.push({ id: 'tva_current', title: 'Déclaration TVA (G50)', date: new Date(year, month, 20), daysRemaining: 0 });
-            generatedDeadlines.push({ id: 'tva_next', title: 'Déclaration TVA (G50)', date: new Date(year, month + 1, 20), daysRemaining: 0 });
-          } else if (regime === 'CME') {
-            generatedDeadlines.push({ id: 'cme_current', title: 'Paiement CME', date: new Date(year, month, 10), daysRemaining: 0 });
-            generatedDeadlines.push({ id: 'cme_next', title: 'Paiement CME', date: new Date(year, month + 1, 10), daysRemaining: 0 });
-          }
+    const buildDeadlines = (profile: any) => {
+      if (!profile) {
+        setDeadlines([]);
+        return;
+      }
 
-          const upcoming = generatedDeadlines
-            .map(d => ({
-              ...d,
-              daysRemaining: Math.ceil((d.date.getTime() - today.getTime()) / (1000 * 3600 * 24))
-            }))
-            .filter(d => d.daysRemaining >= 0 && d.daysRemaining <= settings.daysBefore);
-            
-          setDeadlines(upcoming);
-        }
-      });
-      
-      return () => unsubscribeCompany();
-    });
-    
-    return () => unsubscribeAuth();
-  }, []);
+      const settings = profile.notificationSettings || { daysBefore: 7 };
+      setDaysBefore(settings.daysBefore);
+
+      const regime = profile.taxRegime;
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = today.getMonth();
+
+      const generated: TaxDeadline[] = [];
+      if (regime === 'RSI' || regime === 'RNI') {
+        generated.push({ id: 'tva_current', title: 'Déclaration TVA (G50)', date: new Date(year, month, 20), daysRemaining: 0 });
+        generated.push({ id: 'tva_next', title: 'Déclaration TVA (G50)', date: new Date(year, month + 1, 20), daysRemaining: 0 });
+      } else if (regime === 'CME') {
+        generated.push({ id: 'cme_current', title: 'Paiement CME', date: new Date(year, month, 10), daysRemaining: 0 });
+        generated.push({ id: 'cme_next', title: 'Paiement CME', date: new Date(year, month + 1, 10), daysRemaining: 0 });
+      }
+
+      const upcoming = generated
+        .map((d) => ({ ...d, daysRemaining: Math.ceil((d.date.getTime() - today.getTime()) / (1000 * 3600 * 24)) }))
+        .filter((d) => d.daysRemaining >= 0 && d.daysRemaining <= settings.daysBefore);
+
+      setDeadlines(upcoming);
+    };
+
+    // Initial + live updates from the local repository.
+    return subscribe<any>('companies', (rows) => buildDeadlines(rows[0] ?? null));
+  }, [userId]);
 
   return { deadlines };
 }

@@ -21,7 +21,7 @@ const CATEGORIES = ['Électronique', 'Alimentation', 'Quincaillerie', 'Vêtement
 const UNITS = ['Unité', 'Carton', 'Kg', 'Litre', 'Pack', 'Palette'];
 
 export function InventoryPage() {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
@@ -45,31 +45,31 @@ export function InventoryPage() {
   const [itemMovements, setItemMovements] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!user) return;
-    const unsub = localDb.subscribe('inventory', user.uid, (list) => {
+    if (!userId) return;
+    const unsub = localDb.subscribe('inventory', userId, (list) => {
       setItems(list as InventoryItem[]);
     });
     return () => unsub();
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
-    if (!historyModalItem || !user) {
+    if (!historyModalItem || !userId) {
       setItemMovements([]);
       return;
     }
-    const unsub = localDb.subscribe('stock_movements', user.uid, (list) => {
+    const unsub = localDb.subscribe('stock_movements', userId, (list) => {
       const filtered = list.filter((m: any) => m.itemId === historyModalItem.id);
       filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setItemMovements(filtered);
     });
     return () => unsub();
-  }, [historyModalItem, user]);
+  }, [historyModalItem, userId]);
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newItem.name) return;
+    if (!userId || !newItem.name) return;
     localDb.add('inventory', {
-      userId: user.uid,
+      userId,
       name: newItem.name,
       quantity: Number(newItem.quantity) || 0,
       unitPrice: Number(newItem.unitPrice) || 0,
@@ -92,10 +92,10 @@ export function InventoryPage() {
     const newQ = Math.max(0, current + delta);
     localDb.update('inventory', id, { quantity: newQ });
     
-    if (user) {
+    if (userId) {
       const item = items.find(i => i.id === id);
       localDb.add('stock_movements', {
-        userId: user.uid,
+        userId,
         itemId: id,
         itemName: item?.name || 'Unknown',
         type: delta > 0 ? 'IN' : 'OUT',
@@ -111,14 +111,14 @@ export function InventoryPage() {
 
   const handleMovementSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!movementModalItem || !movementQty || !user) return;
+    if (!movementModalItem || !movementQty || !userId) return;
     
     const delta = Number(movementQty) * (movementType === 'IN' ? 1 : -1);
     const newQ = Math.max(0, movementModalItem.quantity + delta);
     localDb.update('inventory', movementModalItem.id, { quantity: newQ });
     
     localDb.add('stock_movements', {
-      userId: user.uid,
+      userId,
       itemId: movementModalItem.id,
       itemName: movementModalItem.name,
       type: movementType,

@@ -10,9 +10,8 @@ import {
   Trash2,
   AlertCircle
 } from 'lucide-react';
-import { auth, db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { list, create, remove } from '../services/repo';
 import { cn } from '../lib/utils';
 import { extractTextFromFile } from '../lib/file-extractor';
 import ReactMarkdown from 'react-markdown';
@@ -28,8 +27,15 @@ interface ReferenceDocument {
   createdAt: any;
 }
 
+/** Creation timestamp, tolerant of legacy Firestore-shaped docs (`{seconds}`). */
+function createdAtMs(value: any): number {
+  if (typeof value === 'string') return Date.parse(value) || 0;
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  return 0;
+}
+
 export function ReferencesPage() {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const [references, setReferences] = useState<ReferenceDocument[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -38,24 +44,12 @@ export function ReferencesPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchReferences = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
     setLoading(true);
     try {
-      const q = query(
-        collection(db, 'company_references'),
-        where('userId', '==', user.uid)
-      );
-      const snapshot = await getDocs(q);
-      const items: ReferenceDocument[] = [];
-      snapshot.forEach(doc => {
-        items.push({ id: doc.id, ...doc.data() } as ReferenceDocument);
-      });
+      const items: ReferenceDocument[] = list<ReferenceDocument>('company_references');
       // Sort by creation date descending
-      items.sort((a, b) => {
-          const tA = a.createdAt?.seconds || 0;
-          const tB = b.createdAt?.seconds || 0;
-          return tB - tA;
-      });
+      items.sort((a, b) => createdAtMs(b.createdAt) - createdAtMs(a.createdAt));
       setReferences(items);
     } catch (err) {
       console.error("Erreur chargement références:", err);
@@ -63,14 +57,14 @@ export function ReferencesPage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     fetchReferences();
   }, [fetchReferences]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0 || !user) return;
+    if (acceptedFiles.length === 0 || !userId) return;
     const file = acceptedFiles[0];
     
     setIsUploading(true);
@@ -102,18 +96,18 @@ export function ReferencesPage() {
                 setUploadProgress('Sauvegarde des modèles dans le coffre...');
     
                 const newDoc = {
-                    userId: user.uid,
+                    userId,
                     documentName: file.name,
                     documentType: docType,
                     extractedRules: analysis.extractedRules || "Règles extraites non disponibles.",
                     detectedVariables: analysis.detectedVariables || [],
                     visualStyle: analysis.visualStyle || "Non spécifié.",
                     confidenceScore: analysis.confidenceScore || 0,
-                    createdAt: Timestamp.now()
+                    createdAt: new Date().toISOString()
                 };
-    
-                await addDoc(collection(db, 'company_references'), newDoc);
-                
+
+                create('company_references', { id: `ref_${Date.now().toString(36)}`, ...newDoc });
+
                 await fetchReferences();
                 setIsUploading(false);
     
@@ -156,7 +150,7 @@ export function ReferencesPage() {
       setError(err.message || 'Une erreur inattendue est survenue.');
       setIsUploading(false);
     }
-  }, [user, fetchReferences]);
+  }, [userId, fetchReferences]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -173,7 +167,7 @@ export function ReferencesPage() {
     e.stopPropagation();
     if (!window.confirm("Supprimer ce modèle de référence ?")) return;
     try {
-        await deleteDoc(doc(db, 'company_references', id));
+        remove('company_references', id);
         setReferences(prev => prev.filter(r => r.id !== id));
     } catch(err) {
         console.error("Erreur suppression:", err);

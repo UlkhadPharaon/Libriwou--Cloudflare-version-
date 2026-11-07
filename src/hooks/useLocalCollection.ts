@@ -2,31 +2,38 @@ import { useState, useEffect } from 'react';
 import { localDb } from '../services/localDb';
 import { useAuth } from '../contexts/AuthContext';
 
+/**
+ * Local-first collection hook.
+ *
+ * Wraps `localDb.subscribe` (which was Firestore's `onSnapshot`). Reads are local
+ * and instant; writes go to IndexedDB and are mirrored to any registered backend
+ * by `services/repo.ts`, so this hook needs no change when a database arrives.
+ */
 export function useLocalCollection<T = any>(collectionName: string) {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setData([]);
       setLoading(false);
       return;
     }
 
-    const unsubscribe = localDb.subscribe(collectionName, user.uid, (list) => {
+    const unsubscribe = localDb.subscribe(collectionName, userId, (list) => {
       setData(list as T[]);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [collectionName, user?.uid]);
+  }, [collectionName, userId]);
 
   const addDoc = async (docData: any) => {
-    if (!user) throw new Error('Utilisateur non connecté');
+    if (!userId) throw new Error('Aucun profil local actif');
     return localDb.add(collectionName, {
       ...docData,
-      userId: user.uid
+      userId,
     });
   };
 

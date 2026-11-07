@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import { localDb } from '../services/localDb';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe } from '../services/repo';
 import { Building2, Download, Scale, CheckCircle2, AlertCircle, Presentation, ArrowRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle } from 'docx';
@@ -11,6 +10,7 @@ export function BilanPage() {
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState<any>(null);
+  const { userId } = useAuth();
 
   // Preparation steps
   const [steps, setSteps] = useState([
@@ -41,20 +41,14 @@ export function BilanPage() {
   }, [company?.sector]);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!userId) return;
 
-    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
-        if (list.length > 0) setCompany(list[0] as any);
-        else {
-          // fallback to Firestore once for legacy data
-          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
-            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
-          });
-        }
+    const unsubscribeCompany = subscribe<any>('companies', (rows) => {
+        const comp = (rows[0] as any) || null;
+        if (comp) setCompany(comp);
     });
 
-    const unsubscribe = localDb.subscribe('transactions', user.uid, (txs) => {
+    const unsubscribe = subscribe<any[]>('transactions', (txs) => {
       const generatedEntries: any[] = [];
       
       txs.forEach((data: any) => {
@@ -86,7 +80,7 @@ export function BilanPage() {
       unsubscribe();
       unsubscribeCompany();
     };
-  }, []);
+  }, [userId]);
 
   // Compute Grand Livre simply
   const grandLivre = entries.reduce((acc, entry) => {

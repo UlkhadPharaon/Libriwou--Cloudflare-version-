@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react';
-import { doc, updateDoc, collection, query, where, getDocs, writeBatch, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
-import { CheckCircle2, AlertCircle, Save, Building2, Briefcase, FileText, Bell, Trash2, RotateCcw, UserX, Moon, Sun, Bot, Component, LogOut, Phone, Mail, MapPin, Calculator, BadgePercent } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Save, Building2, Briefcase, FileText, Bell, Trash2, RotateCcw, UserX, Moon, Sun, Bot, Component, LogOut, Phone, Mail, MapPin, Calculator, BadgePercent, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { determineTaxRegime } from '../lib/tax-rules';
 import { cn } from '../lib/utils';
-import { signOut } from 'firebase/auth';
+import { signOutLocal } from '../services/session';
+import { subscribe, update, remove, list } from '../services/repo';
+import { companyProfileSchema, validate } from '../lib/schemas';
+import { AiProviderSettings } from '../components/AiProviderSettings';
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const { user, setHasProfile } = useAuth();
+  const { user, userId, setHasProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -20,8 +21,8 @@ export function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const navigate = useNavigate();
-  
-  const [activeTab, setActiveTab] = useState<'profile' | 'fiscal' | 'preferences' | 'subscription' | 'danger'>('profile');
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'fiscal' | 'ai' | 'preferences' | 'subscription' | 'danger'>('profile');
 
   const [company, setCompany] = useState<any>({
     companyName: '',
@@ -41,12 +42,12 @@ export function SettingsPage() {
     notificationSettings: { daysBefore: 7 }
   });
 
+  // Local-first company profile (was a Firestore onSnapshot on companies/{uid}).
   useEffect(() => {
-    if (!user) return;
-    
-    const unsubscribe = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    if (!userId) return;
+    return subscribe<any>('companies', (rows) => {
+      const data = rows[0];
+      if (data) {
         setCompany({
           ...data,
           vatRate: data.vatRate || 18,
@@ -54,54 +55,53 @@ export function SettingsPage() {
         });
       }
     });
-
-    return () => unsubscribe();
-  }, [user]);
+  }, [userId]);
 
   const handleUpdate = async () => {
-    if (!user) return;
+    if (!userId) return;
     setLoading(true);
     try {
       let updatedRegime = company.taxRegime;
       if (company.autoTaxRegime) {
          updatedRegime = determineTaxRegime(company.estimatedRevenue || 0);
       }
-      const companyToUpdate = { ...company, taxRegime: updatedRegime, userId: user.uid, id: user.uid };
-      try { const { localDb } = await import('../services/localDb'); localDb.update('companies', user.uid, companyToUpdate); if (!localDb.get('companies', user.uid)) localDb.add('companies', companyToUpdate); } catch(e){ console.warn("[Settings] local save failed", e); }
-      try { await updateDoc(doc(db, 'companies', user.uid), companyToUpdate); } catch(e){ console.warn("[Settings] Firestore sync failed (local preserved)", e); }
-      setCompany(companyToUpdate);
+      const companyToUpdate = { ...company, taxRegime: updatedRegime, userId, id: userId };
+
+      // Phase 2.1 — validate before persisting. A payload missing companyName/ifu
+      // fails loudly instead of corrupting the local record.
+      const payload = validate(companyProfileSchema, companyToUpdate, 'companies/{uid} (settings)');
+      update('companies', userId, payload);
+
+      setCompany(payload);
       setToast({ message: 'Informations mises à jour avec succès', type: 'success' });
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setToast({ message: 'Erreur lors de la mise à jour', type: 'error' });
+      setToast({
+        message: e?.message?.includes('Zod') ? 'Champs obligatoires manquants (nom de société, IFU).' : 'Erreur lors de la mise à jour',
+        type: 'error'
+      });
     }
     setLoading(false);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      navigate('/');
-    } catch (error) {
-      console.error(error);
-    }
+  const handleLogout = () => {
+    signOutLocal();
+    navigate('/');
   };
 
   const handlePartialReset = async () => {
-    if (!user) return;
+    if (!userId) return;
     setResetLoading(true);
     try {
-      const batch = writeBatch(db);
+      // Local-first: rows are namespaced by userId, so only this profile's data goes.
       const collections = ['transactions', 'conversations', 'simulations', 'inventory', 'stock_movements', 'bug_reports'];
-      
       for (const collName of collections) {
-        const q = query(collection(db, collName), where('userId', '==', user.uid));
-        const snapshot = await getDocs(q);
-        snapshot.docs.forEach(d => batch.delete(d.ref));
+        const rows = list<any>(collName);
+        for (const row of rows) {
+          if (row?.userId === userId || row?.userId === undefined) remove(collName, row.id);
+        }
       }
-
-      await batch.commit();
       setToast({ message: 'Activité réinitialisée (Profil conservé)', type: 'success' });
       setShowResetConfirm(false);
     } catch (e) {
@@ -114,29 +114,27 @@ export function SettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
-    if (!user) return;
+    if (!userId) return;
     setDeleteLoading(true);
     try {
-      const batch = writeBatch(db);
-      const collections = ['transactions', 'conversations', 'simulations', 'bug_reports', 'inventory', 'stock_movements'];
-      
+      const collections = [
+        'transactions', 'conversations', 'simulations', 'bug_reports',
+        'inventory', 'stock_movements', 'employees', 'projects', 'agent_skills',
+        'company_references', 'intelligence_feed', 'companies', 'subscriptions'
+      ];
       for (const collName of collections) {
-        const q = query(collection(db, collName), where('userId', '==', user.uid));
-        const snapshot = await getDocs(q);
-        snapshot.docs.forEach(d => batch.delete(d.ref));
+        const rows = list<any>(collName);
+        for (const row of rows) {
+          if (row?.userId === userId) remove(collName, row.id);
+        }
       }
-      
-      // Delete company profile
-      batch.delete(doc(db, 'companies', user.uid));
 
-      await batch.commit();
-      
       setHasProfile(false);
-      setToast({ message: 'Compte supprimé avec succès', type: 'success' });
-      
+      setToast({ message: 'Profil local supprimé', type: 'success' });
+
       setTimeout(() => {
+        signOutLocal();
         navigate('/');
-        window.location.reload();
       }, 2000);
     } catch (e) {
       console.error(e);
@@ -148,6 +146,7 @@ export function SettingsPage() {
   const tabs = [
     { id: 'profile', label: 'Profil Entreprise', icon: Building2 },
     { id: 'fiscal', label: 'Comptabilité & Fiscalité', icon: FileText },
+    { id: 'ai', label: 'Fournisseur IA', icon: Sparkles },
     { id: 'preferences', label: 'Préférences', icon: Component },
     { id: 'subscription', label: 'Abonnement', icon: CheckCircle2 },
     { id: 'danger', label: 'Zone de Danger', icon: Trash2 },
@@ -164,17 +163,17 @@ export function SettingsPage() {
             Personnalisez votre espace, gérez vos informations légales et configurez le moteur fiscal.
           </p>
         </div>
-        <button 
+        <button
           onClick={handleLogout}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-border-subtle bg-luxury-900/50 text-zinc-400 hover:text-text-title hover:bg-luxury-800 transition-colors shadow-sm"
         >
           <LogOut className="w-4 h-4" /> Se déconnecter
         </button>
       </header>
-      
+
       <AnimatePresence>
         {toast && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, height: 0, y: -10 }}
             animate={{ opacity: 1, height: 'auto', y: 0 }}
             exit={{ opacity: 0, height: 0, y: -10 }}
@@ -189,7 +188,7 @@ export function SettingsPage() {
       </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
+
         {/* Sidebar Navigation */}
         <div className="lg:col-span-1 space-y-2">
            {tabs.map(tab => (
@@ -198,7 +197,7 @@ export function SettingsPage() {
                onClick={() => setActiveTab(tab.id as any)}
                className={cn(
                  "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200",
-                 activeTab === tab.id 
+                 activeTab === tab.id
                    ? tab.id === 'danger' ? "bg-red-500/10 text-red-400 border border-red-500/20 shadow-lg" : "bg-gold-500/10 text-gold-400 border border-gold-500/20 shadow-[0_0_15px_rgba(212,175,55,0.1)]"
                    : "text-zinc-500 hover:bg-luxury-800 hover:text-zinc-300 border border-transparent"
                )}
@@ -211,9 +210,9 @@ export function SettingsPage() {
 
         {/* Content Area */}
         <div className="lg:col-span-3">
-          
+
           <div className="p-6 md:p-8 rounded-3xl bg-luxury-800/40 border border-border-subtle shadow-xl min-h-[500px] flex flex-col justify-between">
-             
+
              {activeTab === 'profile' && (
                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
                   <div>
@@ -222,13 +221,13 @@ export function SettingsPage() {
                     </h2>
                     <p className="text-sm text-zinc-500">Ces informations apparaîtront sur vos factures et dans vos exports comptables.</p>
                   </div>
-                  
+
                   <div className="space-y-6">
                     <div>
                       <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Nom de l'entreprise</label>
                       <input type="text" value={company.companyName || ''} onChange={e => setCompany({...company, companyName: e.target.value})} className="w-full bg-luxury-900 border border-border-subtle rounded-xl px-4 py-3 text-sm text-gold-100 focus:outline-none focus:border-gold-500/50 transition-colors shadow-inner" placeholder="Raison sociale" />
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Numéro IFU</label>
@@ -304,11 +303,11 @@ export function SettingsPage() {
                            <span className="text-[10px] text-zinc-400 font-medium">Détermination Automatique</span>
                         </label>
                       </div>
-                      
-                      <select 
+
+                      <select
                         disabled={company.autoTaxRegime}
-                        value={company.taxRegime || 'CME'} 
-                        onChange={e => setCompany({...company, taxRegime: e.target.value})} 
+                        value={company.taxRegime || 'CME'}
+                        onChange={e => setCompany({...company, taxRegime: e.target.value})}
                         className={cn("w-full bg-luxury-900 border border-border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-gold-500/50 transition-colors outline-none appearance-none font-bold", company.autoTaxRegime ? "text-zinc-500 opacity-50 cursor-not-allowed" : "text-gold-100")}
                       >
                           <option value="CME">CME (Micro-Entreprise) - CA &lt; 15M FCFA</option>
@@ -322,6 +321,21 @@ export function SettingsPage() {
                       )}
                     </div>
                   </div>
+               </motion.div>
+             )}
+
+             {activeTab === 'ai' && (
+               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+                  <div>
+                    <h2 className="text-xl font-serif text-gold-100 flex items-center gap-2 mb-1">
+                      <Sparkles className="w-5 h-5 text-gold-500" /> Fournisseur IA
+                    </h2>
+                    <p className="text-sm text-zinc-500">
+                      Utilisez votre propre clé API. La liste des modèles est récupérée auprès du fournisseur et
+                      filtrée aux modèles capables de lire des images <em>et</em> d'appeler des outils.
+                    </p>
+                  </div>
+                  <AiProviderSettings />
                </motion.div>
              )}
 
@@ -340,13 +354,13 @@ export function SettingsPage() {
                         {theme === 'dark' ? <Moon className="w-4 h-4"/> : <Sun className="w-4 h-4"/>} Thème Interface
                       </label>
                       <div className="flex p-1 bg-luxury-900 rounded-xl border border-border-subtle shadow-inner">
-                         <button 
+                         <button
                            onClick={() => setTheme('dark')}
                            className={cn("flex-1 py-2.5 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-all", theme === 'dark' ? 'bg-gold-500 text-zinc-900 shadow-md' : 'text-zinc-400 hover:text-gold-100')}
                          >
                            Sombre
                          </button>
-                         <button 
+                         <button
                            onClick={() => setTheme('light')}
                            className={cn("flex-1 py-2.5 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-all", theme === 'light' ? 'bg-gold-500 text-zinc-900 shadow-md' : 'text-zinc-400 hover:text-gold-100')}
                          >
@@ -359,12 +373,12 @@ export function SettingsPage() {
                       <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-4 flex items-center gap-2">
                         <Bot className="w-4 h-4" /> Nom de l'assistant IA
                       </label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         placeholder="Ex: Comptable Virtuel"
-                        value={company.aiCompanionName || ''} 
-                        onChange={e => setCompany({...company, aiCompanionName: e.target.value})} 
-                        className="w-full bg-luxury-900 border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-gold-100 focus:outline-none focus:border-gold-500/50 transition-colors shadow-inner" 
+                        value={company.aiCompanionName || ''}
+                        onChange={e => setCompany({...company, aiCompanionName: e.target.value})}
+                        className="w-full bg-luxury-900 border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-gold-100 focus:outline-none focus:border-gold-500/50 transition-colors shadow-inner"
                       />
                     </div>
 
@@ -390,7 +404,7 @@ export function SettingsPage() {
                     <h2 className="text-xl font-serif text-gold-100 flex items-center gap-2 mb-1">
                       <CheckCircle2 className="w-5 h-5 text-gold-500" /> Votre Abonnement
                     </h2>
-                    <p className="text-sm text-zinc-500">Gérez votre formule d'abonnement et vos factures.</p>
+                    <p className="text-sm text-zinc-500">État de votre formule.</p>
                   </div>
 
                   <div className="p-6 md:p-8 rounded-3xl bg-gradient-to-br from-luxury-800 to-luxury-900 border border-gold-500/20 relative overflow-hidden shadow-2xl">
@@ -401,23 +415,21 @@ export function SettingsPage() {
                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-gold-500/10 text-gold-400 border border-gold-500/20 rounded-full text-xs font-bold uppercase tracking-wider mb-4">
                          Plan Actuel
                        </div>
-                       <h3 className="text-3xl font-serif text-text-title mb-2">Formule Beta Privée</h3>
+                       <h3 className="text-3xl font-serif text-text-title mb-2">Accès local complet</h3>
                        <p className="text-zinc-400 max-w-lg leading-relaxed mb-6">
-                         Vous profitez actuellement d'un accès gratuit et anticipé à toutes les fonctionnalités de C-Suite.
+                         Cette version fonctionne intégralement sur votre appareil, sans serveur.
+                         Toutes les fonctionnalités sont ouvertes — la monétisation arrivera avec la
+                         nouvelle base de données et Stripe.
                        </p>
 
                        <ul className="space-y-3 mb-8 max-w-sm">
-                         <li className="flex items-center gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Intelligence artificielle illimitée</li>
+                         <li className="flex items-center gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Intelligence artificielle (votre clé API)</li>
                          <li className="flex items-center gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Moteur fiscal & prévisions</li>
                          <li className="flex items-center gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Gestion des factures & coffre-fort</li>
                          <li className="flex items-center gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Inventaire avancé</li>
                        </ul>
-
-                       <button className="px-6 py-3 bg-white text-black font-bold rounded-xl text-sm opacity-50 cursor-not-allowed hover:bg-gray-100 transition-colors">
-                         Mettre à niveau (Bientôt disponible)
-                       </button>
                      </div>
-                  </div>
+                    </div>
                </motion.div>
              )}
 
@@ -427,7 +439,7 @@ export function SettingsPage() {
                     <h2 className="text-xl font-serif text-red-500 flex items-center gap-2 mb-1">
                       <Trash2 className="w-5 h-5" /> Zone de Danger
                     </h2>
-                    <p className="text-sm text-red-500/70">Gestion des données et suppression de compte de manière irréversible.</p>
+                    <p className="text-sm text-red-500/70">Gestion des données et suppression de profil de manière irréversible.</p>
                   </div>
 
                   {/* Partial Reset */}
@@ -463,13 +475,13 @@ export function SettingsPage() {
                     <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                       <div>
                         <h3 className="text-red-500 font-bold flex items-center gap-2 mb-2">
-                          <UserX className="w-4 h-4" /> Suppression du Compte
+                          <UserX className="w-4 h-4" /> Suppression du Profil Local
                         </h3>
-                        <p className="text-red-500/70 text-sm">Supprime définitivement TOUTES vos données. Action absolue et non restaurable.</p>
+                        <p className="text-red-500/70 text-sm">Supprime définitivement TOUTES les données stockées sur cet appareil. Action absolue et non restaurable.</p>
                       </div>
                       {!showDeleteConfirm ? (
                         <button onClick={() => setShowDeleteConfirm(true)} className="shrink-0 px-6 py-2.5 bg-red-500/10 text-red-500 border border-red-500/30 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-all">
-                          Supprimer le compte
+                          Supprimer le profil
                         </button>
                       ) : (
                         <div className="flex gap-3 shrink-0 bg-luxury-900/80 p-2 rounded-xl border border-red-500/30 flex-wrap">
@@ -487,10 +499,10 @@ export function SettingsPage() {
              )}
 
 
-             {/* Save Button for active tabs !== danger */}
-             {activeTab !== 'danger' && (
+             {/* Save Button for active tabs !== danger && !== ai (AI saves itself) */}
+             {activeTab !== 'danger' && activeTab !== 'ai' && (
                 <div className="mt-8 pt-8 border-t border-border-subtle flex justify-end">
-                  <button 
+                  <button
                     onClick={handleUpdate}
                     disabled={loading}
                     className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-gold-500 to-gold-400 text-zinc-900 rounded-xl font-bold tracking-wide hover:from-gold-400 hover:to-gold-300 transition-all duration-300 shadow-[0_0_20px_rgba(212,175,55,0.2)] disabled:opacity-50"

@@ -1,5 +1,14 @@
 export type TaxRegime = 'CME' | 'RSI' | 'RNI' | 'UNKNOWN';
 
+/**
+ * Phase 2.2 guard: a NaN/Infinity reaching the tax engine would silently poison
+ * every derived amount (profit, TVA, IS, net income) and produce a NaN declaration.
+ * Coerce any non-finite input to 0 instead of letting it propagate.
+ */
+function finite(value: number, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 export interface TaxCalculation {
   regime: TaxRegime;
   tvaAmount: number;
@@ -30,14 +39,17 @@ const CNSS_EMPLOYER_RATE = 0.16; // 16% charges patronales
 const CNSS_FAMILY_RATE = 0.035; // 3.5% prestations familiales
 
 export function calculatePayroll(grossSalary: number): PayrollCalculation {
+  // Phase 2.2 — sanitize inputs before any arithmetic.
+  const salary = finite(grossSalary);
+
   // CNSS Calculations
-  const cnssEmployee = grossSalary * CNSS_EMPLOYEE_RATE;
-  const cnssEmployerBase = grossSalary * CNSS_EMPLOYER_RATE;
-  const cnssFamily = grossSalary * CNSS_FAMILY_RATE;
+  const cnssEmployee = salary * CNSS_EMPLOYEE_RATE;
+  const cnssEmployerBase = salary * CNSS_EMPLOYER_RATE;
+  const cnssFamily = salary * CNSS_FAMILY_RATE;
   const cnssEmployerTotal = cnssEmployerBase + cnssFamily; // 19.5%
-  
+
   // IUTS Base: Gross - CNSS Employee
-  const iutsBase = Math.max(0, grossSalary - cnssEmployee);
+  const iutsBase = Math.max(0, salary - cnssEmployee);
   
   // Barème progressif IUTS BF (simplifié 0 à 25%)
   let iuts = 0;
@@ -70,11 +82,11 @@ export function calculatePayroll(grossSalary: number): PayrollCalculation {
     iuts += (iutsBase - 30000) * 0.121;
   }
 
-  const netSalary = grossSalary - cnssEmployee - iuts;
-  const totalEmployerCost = grossSalary + cnssEmployerTotal;
+  const netSalary = salary - cnssEmployee - iuts;
+  const totalEmployerCost = salary + cnssEmployerTotal;
 
   return {
-    grossSalary,
+    grossSalary: salary,
     cnssEmployee,
     iuts,
     netSalary,
@@ -84,7 +96,9 @@ export function calculatePayroll(grossSalary: number): PayrollCalculation {
 }
 
 export function determineTaxRegime(annualRevenue: number): TaxRegime {
-  if (annualRevenue < 15_000_000) {
+  // Phase 2.2 — a non-finite revenue must never fall through to a wrong regime.
+  const revenue = finite(annualRevenue);
+  if (revenue < 15_000_000) {
     return 'CME'; // Contribution des Micro-Entreprises
   } else if (annualRevenue >= 15_000_000 && annualRevenue <= 50_000_000) {
     return 'RSI'; // Régime Simplifié d'Imposition
@@ -105,16 +119,22 @@ export function calculateTaxes(
   let tvaAmount = 0;
   let isAmount = 0;
   let cmeAmount = 0;
-  
+
+  // Phase 2.2 — sanitize every numeric input (NaN/Infinity → 0).
+  const rev = finite(revenue);
+  const exp = finite(expenses);
+  const payroll = finite(grossPayroll);
+  const months = finite(monthsActive, 12);
+
   // Calculate payroll costs
-  const payrollCalc = calculatePayroll(grossPayroll);
+  const payrollCalc = calculatePayroll(payroll);
   const totalPayrollCost = payrollCalc.totalEmployerCost;
 
   // Calculate prorated revenue/expenses
-  const prorata = monthsActive / 12;
-  const pRevenue = revenue * prorata;
+  const prorata = months / 12;
+  const pRevenue = rev * prorata;
   // Ajout du coût patronal aux charges déductibles
-  const pExpenses = (expenses + totalPayrollCost) * prorata; 
+  const pExpenses = (exp + totalPayrollCost) * prorata;
   const profit = Math.max(0, pRevenue - pExpenses);
 
   if (regime === 'CME') {

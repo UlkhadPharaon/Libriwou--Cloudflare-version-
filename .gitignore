@@ -6,3 +6,14 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local tooling state (generated, not source)
+.vibecheck/
+.playwright-mcp/
+.DS_Store
+Thumbs.db
+
+# OS / editor cruft
+.idea/
+.vscode/
+*.swp

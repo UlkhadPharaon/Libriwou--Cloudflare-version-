@@ -1,9 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BrainCircuit, Cpu, Plus, Sparkles, Trash2, CheckCircle2, ChevronRight, Activity } from 'lucide-react';
-import { auth, db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, Timestamp, updateDoc } from 'firebase/firestore';
+import { create, list, remove, update } from '../services/repo';
 import { cn } from '../lib/utils';
 import ReactMarkdown from 'react-markdown';
 
@@ -19,29 +18,21 @@ interface AgentSkill {
 }
 
 export function AgentSkillsPage() {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [isCreating, setIsCreating] = useState(false);
   const [newSkill, setNewSkill] = useState({ name: '', description: '', instructions: '', triggerKeywords: '' });
 
   const fetchSkills = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
     setLoading(true);
     try {
-      const q = query(
-        collection(db, 'agent_skills'),
-        where('userId', '==', user.uid)
-      );
-      const snapshot = await getDocs(q);
-      const items: AgentSkill[] = [];
-      snapshot.forEach(d => {
-        items.push({ id: d.id, ...d.data() } as AgentSkill);
-      });
+      const items: AgentSkill[] = list<AgentSkill>('agent_skills');
       items.sort((a, b) => {
-          const tA = a.createdAt?.seconds || 0;
-          const tB = b.createdAt?.seconds || 0;
+          const tA = Date.parse(a.createdAt) || 0;
+          const tB = Date.parse(b.createdAt) || 0;
           return tB - tA;
       });
       setSkills(items);
@@ -50,29 +41,29 @@ export function AgentSkillsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);
 
   const handleCreateSkill = async () => {
-      if (!user || !newSkill.name || !newSkill.instructions) return;
+      if (!userId || !newSkill.name || !newSkill.instructions) return;
       
       const skillData = {
-          userId: user.uid,
+          userId,
           name: newSkill.name,
           description: newSkill.description,
           instructions: newSkill.instructions,
           triggerKeywords: newSkill.triggerKeywords.split(',').map(k => k.trim()).filter(k => k),
           systemCapability: false,
           isActive: true,
-          createdAt: Timestamp.now()
+          createdAt: new Date().toISOString()
       };
 
       try {
-          const docRef = await addDoc(collection(db, 'agent_skills'), skillData);
-          setSkills([{id: docRef.id, ...skillData}, ...skills]);
+          const id = create('agent_skills', { id: `skill_${Date.now().toString(36)}`, ...skillData });
+          setSkills([{id, ...skillData}, ...skills]);
           setIsCreating(false);
           setNewSkill({ name: '', description: '', instructions: '', triggerKeywords: '' });
       } catch (e) {
@@ -83,7 +74,7 @@ export function AgentSkillsPage() {
 
   const handleToggleActive = async (skill: AgentSkill) => {
       try {
-          await updateDoc(doc(db, 'agent_skills', skill.id), {
+          update('agent_skills', skill.id, {
               isActive: !skill.isActive
           });
           setSkills(skills.map(s => s.id === skill.id ? { ...s, isActive: !s.isActive } : s));
@@ -95,7 +86,7 @@ export function AgentSkillsPage() {
   const handleDelete = async (id: string) => {
       if (!window.confirm("Oublier cette compétence ? NEO ne pourra plus l'utiliser.")) return;
       try {
-          await deleteDoc(doc(db, 'agent_skills', id));
+          remove('agent_skills', id);
           setSkills(skills.filter(s => s.id !== id));
       } catch (e) {
           console.error("Error deleting skill", e);

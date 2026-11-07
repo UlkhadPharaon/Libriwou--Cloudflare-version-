@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe } from '../services/repo';
 import { localDb } from '../services/localDb';
-import { UploadCloud, CheckCircle2, AlertCircle, ArrowRightLeft, FileSpreadsheet, Search, Filter, Wallet, ArrowUpRight, ArrowDownRight, Tag, Save, Check, X, Building2 } from 'lucide-react';
+import { UploadCloud, CheckCircle2, AlertCircle, ArrowRightLeft, FileSpreadsheet, Search, Filter, Wallet, ArrowUpRight, ArrowDownRight, Tag, Save, Check, X, Building2, Landmark } from 'lucide-react';
 import Papa from 'papaparse';
 import { ExtractedTransaction } from '../services/nim';
+import { ProBadge, UpgradePanel } from '../components/ProBadge';
+import { canUseFeature } from '../services/subscription';
 import { cn } from '../lib/utils';
 
 interface BankTransaction {
@@ -31,7 +34,8 @@ const BANK_CATEGORIES = [
 ];
 
 export function BankPage() {
-  const [user, setUser] = useState(auth.currentUser);
+  const { t } = useTranslation();
+  const { userId, subscription } = useAuth();
   const [scannedTransactions, setScannedTransactions] = useState<ExtractedTransaction[]>([]);
   const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([]);
   
@@ -47,21 +51,16 @@ export function BankPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('Autre');
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((u) => setUser(u));
-    return () => unsubscribeAuth();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     // Local-first transactions — instant & offline
-    const unsub = localDb.subscribe('transactions', user.uid, (txs) => {
+    const unsub = subscribe('transactions', (txs) => {
       setScannedTransactions(txs as ExtractedTransaction[]);
       if (bankTransactions.length > 0) {
         reconcileTransactions(bankTransactions, txs as ExtractedTransaction[], false);
       }
     });
     return () => unsub();
-  }, [user]); // remove bankTransactions.length dep to avoid loop; reconciliation triggered via setScannedTransactions or import
+  }, [userId]); // remove bankTransactions.length dep to avoid loop; reconciliation triggered via setScannedTransactions or import
 
   const handleCurrencyChange = (curr: string) => {
     setImportCurrency(curr);
@@ -158,9 +157,9 @@ export function BankPage() {
 
   const saveManualCategorization = async (txId: string) => {
     const tx = bankTransactions.find(t => t.id === txId);
-    if (!tx || !user) return;
+    if (!tx || !userId) return;
     const payload = {
-        userId: user.uid,
+        userId,
         date: tx.date || new Date().toISOString().split('T')[0],
         category: selectedCategory,
         vendorName: 'Banque - ' + tx.description,
@@ -174,11 +173,10 @@ export function BankPage() {
         createdAt: new Date().toISOString()
       };
     try {
+      // Local-first: the vault copy is the source of truth (Firebase removed).
       const localId = localDb.add('transactions', payload);
-      let firestoreId = localId;
-      try { const docRef = await addDoc(collection(db, 'transactions'), payload); firestoreId = docRef.id; } catch(e){ console.warn('[Bank] Firestore sync failed (local preserved):', e); }
       setBankTransactions(prev => prev.map(t => 
-        t.id === txId ? { ...t, status: 'reconciled', systemCategoryId: firestoreId, systemCategoryName: selectedCategory } : t
+        t.id === txId ? { ...t, status: 'reconciled', systemCategoryId: localId, systemCategoryName: selectedCategory } : t
       ));
       setCategorizingTx(null);
     } catch(e) {
@@ -217,19 +215,45 @@ export function BankPage() {
           <h1 className="text-3xl font-serif text-text-title tracking-tight mb-2 flex items-center gap-3">
             <Building2 className="w-8 h-8 text-gold-500" />
             Rapprochement Bancaire
+            {/* Phase 3.1 — bank aggregation is a paid capability */}
+            <ProBadge />
           </h1>
           <p className="text-zinc-500 max-w-xl">
-            Importez vos relevés pour vérifier vos justificatifs ou catégoriser directement les frais bancaires et mouvements.
+            {t('bank.csvDesc')}
           </p>
         </div>
         {bankTransactions.length > 0 && (
           <div className="flex bg-luxury-800 rounded-lg p-1 border border-border-subtle">
-             <button onClick={() => setBankTransactions([])} className="px-4 py-2 text-sm text-gold-500 hover:text-gold-400 font-medium">Importer un nouveau fichier</button>
+             <button onClick={() => setBankTransactions([])} className="px-4 py-2 text-sm text-gold-500 hover:text-gold-400 font-medium">{t('bank.csvCta')}</button>
           </div>
         )}
       </header>
 
-      {bankTransactions.length === 0 ? (
+      {/* Phase 4.1 — honest status of the automatic bank connection.
+          The EGM audit flagged the landing page as promising a bank integration that
+          does not exist. We say it plainly instead of over-promising. */}
+      <div className="flex flex-col md:flex-row gap-4 p-5 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06]">
+        <div className="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 shrink-0">
+          <Landmark className="w-5 h-5" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+            <h2 className="text-sm font-bold text-amber-200 tracking-wide">
+              {t('bank.comingSoonTitle')}
+            </h2>
+            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-zinc-950 text-[10px] font-black uppercase tracking-wider">
+              {t('bank.comingSoonBadge')}
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-amber-100/80 leading-relaxed max-w-3xl">
+            {t('bank.comingSoonDesc')}
+          </p>
+        </div>
+      </div>
+
+      {!canUseFeature('bank_import', subscription) ? (
+        <UpgradePanel feature={t('subscription.bankImportFeature', 'l\'import et le rapprochement bancaire')} />
+      ) : bankTransactions.length === 0 ? (
         <motion.div 
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           className={cn("border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300 backdrop-blur-sm",

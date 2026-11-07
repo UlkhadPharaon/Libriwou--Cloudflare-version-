@@ -1,4 +1,56 @@
 import { extractTextFromFile } from '../lib/file-extractor';
+import {
+  loadAiConfig,
+  loadCustomBaseUrl,
+  getProvider,
+  getProviderKey,
+  resolveModel,
+  sendChat,
+  type ChatMessage,
+  type ChatTool,
+  type ContentPart,
+  type ToolCall,
+} from './ai';
+
+/**
+ * Builds the tool-calling payload shared by chat and vision calls.
+ * The 12 tools below are the agentic surface of NEO — they are provider-agnostic
+ * (OpenAI `tools` shape) and translated to Anthropic's schema inside the client.
+ */
+export type { ChatMessage, ContentPart, ToolCall };
+
+/** Reads the user's BYOK configuration. Throws a helpful error when incomplete. */
+async function resolveAiSetup(): Promise<{
+  providerId: string;
+  apiKey: string;
+  model: string;
+  baseUrlOverride: string | undefined;
+}> {
+  const config = loadAiConfig();
+  const apiKey = await getProviderKey(config.providerId);
+
+  if (!apiKey) {
+    throw new Error(
+      `Aucune clé API configurée pour ${getProvider(config.providerId).label}. ` +
+        `Ouvrez Réglages → Fournisseur IA pour ajouter votre clé.`
+    );
+  }
+
+  const model = resolveModel(config, config.providerId);
+  if (!model) {
+    throw new Error(
+      `Aucun modèle sélectionné. Ouvrez Réglages → Fournisseur IA et choisissez un modèle ` +
+        `avec vision + outils.`
+    );
+  }
+
+  return {
+    providerId: config.providerId,
+    apiKey,
+    model,
+    baseUrlOverride: config.providerId === 'custom' ? loadCustomBaseUrl() || undefined : undefined,
+  };
+}
 
 export interface ExtractedTransaction {
   id?: string;
@@ -39,34 +91,47 @@ export interface UserContext {
 }
 
 export async function extractTransactionFromFile(file: File): Promise<ExtractedTransaction> {
-  let payload: any = {};
-  
+  const setup = await resolveAiSetup();
+
+  const VISION_PROMPT = `Analyse ce document (facture, reçu, ticket de caisse ou note).
+Extrais la transaction principale et réponds UNIQUEMENT par un objet JSON valide, sans texte autour, avec cette forme exacte :
+{"type":"INCOME|EXPENSE","amountExclTax":0,"vatAmount":0,"amountInclTax":0,"date":"YYYY-MM-DD","description":"...","category":"...","vendorName":"...","currency":"XOF","syscohadaCode":"...","lineItems":[{"description":"...","quantity":1,"unitPrice":0,"amountExclTax":0}]}
+Pour tout ticket multi-articles, extrais CHAQUE ligne dans lineItems. Aucun texte avant ou après le JSON.`;
+
+  let content: ContentPart[];
   if (file.type === 'application/pdf' || file.type.includes('wordprocessingml')) {
     const text = await extractTextFromFile(file);
-    payload = { text, mimeType: file.type };
+    content = [{ type: 'text', text: `${VISION_PROMPT}\n\nCONTENU DU DOCUMENT :\n---\n${text}\n---` }];
   } else {
     const base64 = await fileToBase64(file);
-    payload = { base64, mimeType: file.type };
+    content = [
+      { type: 'text', text: VISION_PROMPT },
+      { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64}` } },
+    ];
   }
 
-  const response = await fetch('/api/vision', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    throw new Error("Impossible d'analyser le document.");
+  let text: string;
+  try {
+    const result = await sendChat({
+      providerId: setup.providerId,
+      apiKey: setup.apiKey,
+      model: setup.model,
+      baseUrlOverride: setup.baseUrlOverride,
+      temperature: 0.1,
+      maxTokens: 2048,
+      messages: [{ role: 'user', content }],
+    });
+    text = result.text;
+  } catch (error: any) {
+    console.error('[Vision] provider call failed', error);
+    throw new Error(error?.message || "Impossible d'analyser le document.");
   }
 
-  const data = await response.json();
-  const text = data.text || "";
-  
   try {
     // Robust extraction: find the first '{' and last '}'
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    
+
     if (start !== -1 && end !== -1 && end > start) {
         const jsonPart = text.substring(start, end + 1);
         return JSON.parse(jsonPart) as ExtractedTransaction;
@@ -91,7 +156,7 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
-const tools = [
+const tools: ChatTool[] = [
   {
     type: "function",
     function: {
@@ -358,6 +423,15 @@ export async function sendChatMessage(
       };
     }
 
+    // BYOK: resolve provider, key and model before any call. A missing key is a
+    // configuration error the user can fix in Réglages — say so plainly.
+    let setup: Awaited<ReturnType<typeof resolveAiSetup>>;
+    try {
+      setup = await resolveAiSetup();
+    } catch (error: any) {
+      return { text: error?.message || "Configurez votre fournisseur IA dans les Réglages.", actions: [] };
+    }
+
     const messages: any[] = [];
       if (context) {
         messages.push({
@@ -437,68 +511,55 @@ STYLE: Décisif, expert, autonome et en constante auto-amélioration. N'attends 
 
     
     const allActions: any[] = [];
-    let assistantMessage: any = null;
+    let assistantText = '';
+    let pendingToolCalls: ToolCall[] = [];
 
     // Reasoning Loop — tightened to 3 max to avoid 15min on simple "salut"
     for (let i = 0; i < 3; i++) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 45000);
-        let response: Response;
+        let result;
         try {
-          response = await fetch('/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  messages: conversationMessages,
-                  tools,
-                  stream: false,
-                  enable_thinking: enableThinking
-              }),
-              signal: controller.signal
+          result = await sendChat({
+            providerId: setup.providerId,
+            apiKey: setup.apiKey,
+            model: setup.model,
+            baseUrlOverride: setup.baseUrlOverride,
+            messages: conversationMessages,
+            tools,
+            ...(enableThinking ? { temperature: 0.3 } : {}),
           });
-        } catch (e: any) {
-          clearTimeout(timeout);
-          if (e.name === 'AbortError') {
-            return { text: "Désolé, la réponse a pris trop de temps (>45s). Réessaie avec une question plus précise ou désactive le mode réflexion.", actions: allActions };
-          }
-          throw e;
-        }
-        clearTimeout(timeout);
-
-        let data;
-        try {
-            data = await response.json();
-        } catch (e) {
-            console.error("Error parsing API response. Response probably not JSON:", e);
-            throw new Error(`Invalid response from API. Expected JSON. Status: ${response.status}`);
-        }
-        
-        if (!response.ok) {
-            console.error("API error:", data);
-            return { text: "Désolé, une erreur technique s'est produite lors de la connexion. " + (data?.error || ""), actions: allActions };
+        } catch (error: any) {
+          console.error('[NEO] provider call failed', error);
+          return {
+            text:
+              `Désolé, la connexion au fournisseur IA a échoué : ${error?.message || 'erreur inconnue'}. ` +
+              `Vérifiez votre clé et votre modèle dans Réglages → Fournisseur IA.`,
+            actions: allActions,
+          };
         }
 
-        if (!data.choices || data.choices.length === 0) {
-            console.error("No choices in response:", data);
-            return { text: "Désolé, je n'ai pas pu générer de réponse.", actions: allActions };
-        }
+        assistantText = result.text;
+        pendingToolCalls = result.toolCalls;
 
-        assistantMessage = data.choices[0].message;
-        conversationMessages.push(assistantMessage);
+        // Record the assistant turn so the next iteration sees it.
+        conversationMessages.push({
+          role: 'assistant',
+          content: result.text,
+          ...(result.toolCalls.length ? { tool_calls: result.toolCalls } : {}),
+        });
 
-        if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-            for (const toolCall of assistantMessage.tool_calls) {
+        if (result.toolCalls.length > 0) {
+            for (const toolCall of result.toolCalls) {
                 try {
                     const args = JSON.parse(toolCall.function.arguments);
-                    const result = await actionHandler!(toolCall.function.name, args);
+                    const toolResult = await actionHandler!(toolCall.function.name, args);
                     
-                    allActions.push({ name: toolCall.function.name, args, result });
+                    allActions.push({ name: toolCall.function.name, args, result: toolResult });
                     
                     // Add tool result to conversation
                     conversationMessages.push({
                         role: 'tool',
                         tool_call_id: toolCall.id,
-                        content: typeof result === 'string' ? result : JSON.stringify(result)
+                        content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
                     });
                 } catch (toolError) {
                     console.error("Error executing tool:", toolError);
@@ -517,11 +578,9 @@ STYLE: Décisif, expert, autonome et en constante auto-amélioration. N'attends 
         break;
     }
 
-    // OpenRouter reasoning models (e.g. ling-3.0-flash-vl) may put output in
-    // `reasoning` when `content` is null/truncated — fall back gracefully.
+    // Some providers put output in `reasoning` when `content` is empty.
     const fallbackText =
-      assistantMessage?.content ||
-      (assistantMessage as any)?.reasoning ||
+      assistantText ||
       (allActions.length > 0 ? "J'ai effectué les actions demandées." : "Je n'ai pas pu générer de réponse.");
 
     // SECOURS proposition : si le modèle a décrit un document sans appeler l'outil

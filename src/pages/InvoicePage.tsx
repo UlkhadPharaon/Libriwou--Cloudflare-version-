@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, addDoc, doc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe } from '../services/repo';
 import { 
   Plus, 
   CheckCircle2, 
@@ -32,6 +32,7 @@ interface InvoiceElement {
 
 export function InvoicePage() {
   const location = useLocation();
+  const { userId } = useAuth();
   const [company, setCompany] = useState<any>(null);
   const [invoiceType, setInvoiceType] = useState<'FACTURE' | 'PROFORMA'>('PROFORMA');
   
@@ -63,25 +64,13 @@ export function InvoicePage() {
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      const unsub = localDb.subscribe('companies', user.uid, (list) => {
-        if (list.length > 0) setCompany(list[0] as any);
-        else {
-          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
-            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
-          });
-        }
-      });
-      return () => unsub();
-    }
-    const unsubAuth = auth.onAuthStateChanged((u) => {
-      if (!u) return;
-      const unsub = localDb.subscribe('companies', u.uid, (list) => { if (list.length>0) setCompany(list[0] as any); });
-      return () => unsub();
+    if (!userId) return;
+    // Local-first company profile — the vault copy is the only source of truth.
+    const unsub = subscribe('companies', (rows) => {
+      if (rows.length > 0) setCompany(rows[0] as any);
     });
-    return () => unsubAuth();
-  }, []);
+    return () => unsub();
+  }, [userId]);
 
   const addElement = () => {
     setElements([...elements, { id: Math.random().toString(), description: '', quantity: 1, unit: 'U', unitPrice: 0, discount: 0 }]);
@@ -150,7 +139,7 @@ export function InvoicePage() {
 
   const handleGenerateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!company || !auth.currentUser || elements.length === 0) return;
+    if (!company || !userId || elements.length === 0) return;
     setIsGenerating(true);
 
     try {
@@ -159,10 +148,10 @@ export function InvoicePage() {
 
       if (invoiceType === 'FACTURE') {
         const timestampStr = new Date().toISOString();
-        const fingerprint = await generateFECFingerprint(auth.currentUser.uid, numAmountHT, timestampStr);
+        const fingerprint = await generateFECFingerprint(userId, numAmountHT, timestampStr);
 
         const txPayload = {
-          userId: auth.currentUser.uid,
+          userId,
           type: 'INCOME',
           date: timestampStr.split('T')[0],
           amountExclTax: numAmountHT,
@@ -193,7 +182,6 @@ export function InvoicePage() {
           }
         };
         localDb.add('transactions', txPayload);
-        try { await addDoc(collection(db, 'transactions'), txPayload); } catch(e){ console.warn('[Invoice] Firestore sync failed (local preserved):', e); }
 
         setSuccessMessage('Facture générée. Enregistrée dans le coffre-fort numérique avec signature FEC.');
       } else {

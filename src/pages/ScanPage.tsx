@@ -18,13 +18,11 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { extractTransactionFromFile, ExtractedTransaction } from '../services/nim';
-import { auth, db } from '../firebase';
 import { localDb } from '../services/localDb';
-import { collection, addDoc, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { ErrorReporter } from '../components/ErrorReporter';
-import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
 import { cn } from '../lib/utils';
 import { LineItemsView } from '../components/LineItemsView';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ManualItem {
   description: string;
@@ -33,6 +31,7 @@ interface ManualItem {
 }
 
 export function ScanPage() {
+  const { userId } = useAuth();
   // Connection state
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   
@@ -168,7 +167,7 @@ export function ScanPage() {
 
   // Save parsed transaction (AI scanner path)
   const handleSave = async () => {
-    if (!extractedData || !auth.currentUser || currentIndex >= files.length) return;
+    if (!extractedData || !userId || currentIndex >= files.length) return;
 
     try {
       const originalAmountExclTax = Number(extractedData.amountExclTax) || 0;
@@ -185,7 +184,7 @@ export function ScanPage() {
         amountExclTax: originalAmountExclTax * exchangeRate,
         vatAmount: originalVatAmount * exchangeRate,
         amountInclTax: originalAmountInclTax * exchangeRate,
-        userId: auth.currentUser.uid,
+        userId,
         createdAt: new Date().toISOString()
       });
 
@@ -194,7 +193,7 @@ export function ScanPage() {
         for (const item of extractedData.lineItems) {
           if (!item.description || !item.quantity) continue;
           
-          const allInv = localDb.getAll('inventory', auth.currentUser.uid);
+          const allInv = localDb.getAll('inventory', userId);
           const matchedItem = allInv.find(inv => inv.name === item.description);
           
           const unitPriceXOF = Number(item.unitPrice) * exchangeRate;
@@ -215,7 +214,7 @@ export function ScanPage() {
             });
           } else {
             itemId = localDb.add('inventory', {
-              userId: auth.currentUser.uid,
+              userId,
               name: item.description,
               quantity: qty,
               unitPrice: unitPriceXOF,
@@ -226,7 +225,7 @@ export function ScanPage() {
           }
 
           localDb.add('stock_movements', {
-            userId: auth.currentUser.uid,
+            userId,
             itemId: itemId,
             itemName: item.description,
             type: 'IN',
@@ -261,7 +260,7 @@ export function ScanPage() {
   // Save manual entry transaction (offline/online friendly)
   const handleSaveManual = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser) return;
+    if (!userId) return;
     if (!manualVendor.trim()) {
       setError("Veuillez indiquer le commerçant ou le client.");
       return;
@@ -305,14 +304,14 @@ export function ScanPage() {
       // Add to Local Database (100% private, never leaves device)
       localDb.add('transactions', {
         ...payload,
-        userId: auth.currentUser.uid,
+        userId,
         createdAt: new Date().toISOString()
       });
 
       // Update Stock (analogous lock)
       if (updateInventory && manualItems.length > 0) {
         for (const item of manualItems) {
-          const allInv = localDb.getAll('inventory', auth.currentUser.uid);
+          const allInv = localDb.getAll('inventory', userId);
           const matchedItem = allInv.find(inv => inv.name === item.description);
           
           let itemId = '';
@@ -332,7 +331,7 @@ export function ScanPage() {
             });
           } else {
             itemId = localDb.add('inventory', {
-              userId: auth.currentUser.uid,
+              userId,
               name: item.description,
               quantity: finalQty,
               unitPrice: item.unitPrice,
@@ -343,7 +342,7 @@ export function ScanPage() {
           }
 
           localDb.add('stock_movements', {
-            userId: auth.currentUser.uid,
+            userId,
             itemId,
             itemName: item.description,
             type: movementType,

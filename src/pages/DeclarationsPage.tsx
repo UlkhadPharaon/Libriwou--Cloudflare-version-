@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
-import { collection, query, doc, onSnapshot, orderBy, where } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe } from '../services/repo';
 import { FileCheck, Download, Plus, Clock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileSpreadsheet, Sparkles, Loader2, ArrowLeft, Save } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, BorderStyle, WidthType } from 'docx';
 import { saveAs } from 'file-saver';
 import { sendChatMessage, UserContext } from '../services/nim';
-import { localDb } from '../services/localDb';
 import { ErrorReporter } from '../components/ErrorReporter';
 
 interface TaxDeclaration {
@@ -26,6 +25,7 @@ export function DeclarationsPage() {
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState<any>(null);
   const [revenue, setRevenue] = useState(0);
+  const { userId } = useAuth();
 
   // Optimizer state
   const [isOptimizing, setIsOptimizing] = useState(false);
@@ -36,23 +36,14 @@ export function DeclarationsPage() {
   const [formData, setFormData] = useState<{ ca?: number; tvaCollected?: number; tvaDeductible?: number }>({});
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      const unsubAuth = auth.onAuthStateChanged((u) => { if (u) window.location.reload(); });
-      return () => unsubAuth();
-    }
-    // Listen to company via localDb (with Firestore fallback)
-    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list: any[]) => {
+    if (!userId) return;
+    // Listen to company via the local repository
+    const unsubscribeCompany = subscribe<any>('companies', (list: any[]) => {
           if (list.length > 0) setCompany(list[0] as any);
-          else {
-            import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
-              getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) setCompany(s.data() as any); });
-            });
-          }
         });
 
-    // Fetch basic transaction stats for the optimizer via localDb
-    const unsubscribeTransactions = localDb.subscribe('transactions', user.uid, (txs: any[]) => {
+    // Fetch basic transaction stats for the optimizer
+    const unsubscribeTransactions = subscribe<any[]>('transactions', (txs: any[]) => {
           let totalRev = 0;
           txs.forEach((data: any) => {
             if (data.type === 'INCOME' || data.type === 'income') {
@@ -100,7 +91,7 @@ export function DeclarationsPage() {
         try { unsubscribeCompany(); } catch {}
         try { unsubscribeTransactions(); } catch {}
       };
-  }, []);
+  }, [userId]);
 
   const handleOptimization = async () => {
     setIsOptimizing(true);

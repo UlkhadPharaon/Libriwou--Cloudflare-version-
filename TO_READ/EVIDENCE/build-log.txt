@@ -1,0 +1,219 @@
+=== LIBRIWOUO v1.5 - POST-FIREBASE-REMOVAL BUILD LOG ===
+Generated: 2026-11-07T11:11:03.795Z
+
+Architecture: local-first (IndexedDB) + BYOK multi-provider AI.
+Firebase, Google OAuth, Firestore rules and the server-side AI handlers are removed.
+
+--- npm run lint (tsc --noEmit) ---
+
+> react-example@0.0.0 lint
+> tsc --noEmit
+
+
+
+--- npm test (vitest) ---
+
+> react-example@0.0.0 test
+> vitest run
+
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mE:/Ulkhad Empire/Tech Empire/Libriwouô( Ulrich X Gilberte)/SaaS/Libriwouô v1.5[39m
+
+ [32m✓[39m src/lib/tax-rules.test.ts [2m([22m[2m42 tests[22m[2m)[22m[90m 22[2mms[22m[39m
+ [32m✓[39m src/services/ai/settings.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 13[2mms[22m[39m
+ [32m✓[39m src/services/ai/ai.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 67[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m75 passed[39m[22m[90m (75)[39m
+[2m   Start at [22m 11:11:48
+[2m   Duration [22m 1.27s[2m (transform 425ms, setup 0ms, collect 590ms, tests 103ms, environment 1ms, prepare 1.09s)[22m
+
+
+
+--- npm run build ---
+
+> react-example@0.0.0 build
+> vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs
+
+[36mvite v6.4.3 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 3635 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mmanifest.webmanifest                        [39m[1m[2m    0.37 kB[22m[1m[22m
+[2mdist/[22m[32mindex.html                                  [39m[1m[2m    1.86 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+[2mdist/[22m[32massets/pdf.worker-B1D2UnXD.mjs              [39m[1m[2m2,161.15 kB[22m[1m[22m
+[2mdist/[22m[35massets/index-BgidlrPw.css                   [39m[1m[2m  131.57 kB[22m[1m[22m[2m │ gzip:  18.43 kB[22m
+[2mdist/[22m[36massets/chevron-right-CanNqOCD.js            [39m[1m[2m    0.30 kB[22m[1m[22m[2m │ gzip:   0.25 kB[22m
+[2mdist/[22m[36massets/plus-DA2wMYpn.js                     [39m[1m[2m    0.33 kB[22m[1m[22m[2m │ gzip:   0.25 kB[22m
+[2mdist/[22m[36massets/clock-r4_WJz7m.js                    [39m[1m[2m    0.34 kB[22m[1m[22m[2m │ gzip:   0.27 kB[22m
+[2mdist/[22m[36massets/arrow-left-DyuAJP03.js               [39m[1m[2m    0.34 kB[22m[1m[22m[2m │ gzip:   0.27 kB[22m
+[2mdist/[22m[36massets/search-CI5gi4B7.js                   [39m[1m[2m    0.34 kB[22m[1m[22m[2m │ gzip:   0.27 kB[22m
+[2mdist/[22m[36massets/errors-qyuvgdBe.js                   [39m[1m[2m    0.35 kB[22m[1m[22m[2m │ gzip:   0.26 kB[22m
+[2mdist/[22m[36massets/download-3YaIIiZ4.js                 [39m[1m[2m    0.41 kB[22m[1m[22m[2m │ gzip:   0.30 kB[22m
+[2mdist/[22m[36massets/presentation-Ci1bRogR.js             [39m[1m[2m    0.41 kB[22m[1m[22m[2m │ gzip:   0.30 kB[22m
+[2mdist/[22m[36massets/funnel-DuIDrz2z.js                   [39m[1m[2m    0.42 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[36massets/eye-CtnWT_zz.js                      [39m[1m[2m    0.42 kB[22m[1m[22m[2m │ gzip:   0.30 kB[22m
+[2mdist/[22m[36massets/cloud-upload-B818KFvF.js             [39m[1m[2m    0.42 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[36massets/wallet-DQaBHI1p.js                   [39m[1m[2m    0.46 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[36massets/tag-Cg8xztrv.js                      [39m[1m[2m    0.49 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/phone-FBraF1TY.js                    [39m[1m[2m    0.50 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
+[2mdist/[22m[36massets/save-Bds86FjE.js                     [39m[1m[2m    0.50 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
+[2mdist/[22m[36massets/trash-2-Dk0iZnoS.js                  [39m[1m[2m    0.50 kB[22m[1m[22m[2m │ gzip:   0.32 kB[22m
+[2mdist/[22m[36massets/building-2-CCY4h7gY.js               [39m[1m[2m    0.56 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
+[2mdist/[22m[36massets/arrow-up-right-Dn7OKJJ_.js           [39m[1m[2m    0.63 kB[22m[1m[22m[2m │ gzip:   0.32 kB[22m
+[2mdist/[22m[36massets/user-DiIyStW1.js                     [39m[1m[2m    0.73 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/cpu-Ckno5XCd.js                      [39m[1m[2m    0.82 kB[22m[1m[22m[2m │ gzip:   0.40 kB[22m
+[2mdist/[22m[36massets/external-link-DhVfGJxd.js            [39m[1m[2m    0.88 kB[22m[1m[22m[2m │ gzip:   0.43 kB[22m
+[2mdist/[22m[36massets/LineItemsView-DTSzkddj.js            [39m[1m[2m    1.14 kB[22m[1m[22m[2m │ gzip:   0.58 kB[22m
+[2mdist/[22m[36massets/FileSaver.min-D_NDqZRE.js            [39m[1m[2m    2.64 kB[22m[1m[22m[2m │ gzip:   1.27 kB[22m
+[2mdist/[22m[36massets/DocumentsPage-D02U_aJI.js            [39m[1m[2m    3.74 kB[22m[1m[22m[2m │ gzip:   1.67 kB[22m
+[2mdist/[22m[36massets/CashflowPage-CVBH9Y6M.js             [39m[1m[2m    4.80 kB[22m[1m[22m[2m │ gzip:   2.08 kB[22m
+[2mdist/[22m[36massets/client-9tj9iIg_.js                   [39m[1m[2m    5.02 kB[22m[1m[22m[2m │ gzip:   2.25 kB[22m
+[2mdist/[22m[36massets/workbox-window.prod.es5-BBnX5xw4.js  [39m[1m[2m    5.75 kB[22m[1m[22m[2m │ gzip:   2.36 kB[22m
+[2mdist/[22m[36massets/CartesianGrid-CclB216A.js            [39m[1m[2m    7.95 kB[22m[1m[22m[2m │ gzip:   2.90 kB[22m
+[2mdist/[22m[36massets/ReferencesPage-DtwTlO6Y.js           [39m[1m[2m    8.20 kB[22m[1m[22m[2m │ gzip:   3.23 kB[22m
+[2mdist/[22m[36massets/AgentSkillsPage-CLACTv2K.js          [39m[1m[2m    8.50 kB[22m[1m[22m[2m │ gzip:   2.89 kB[22m
+[2mdist/[22m[36massets/docx-generator-DYsYGQiP.js           [39m[1m[2m    8.74 kB[22m[1m[22m[2m │ gzip:   2.08 kB[22m
+[2mdist/[22m[36massets/PayrollSlipPage-Dj8S-d3e.js          [39m[1m[2m    8.85 kB[22m[1m[22m[2m │ gzip:   2.70 kB[22m
+[2mdist/[22m[36massets/PayrollPage-Bn8Oemag.js              [39m[1m[2m   12.61 kB[22m[1m[22m[2m │ gzip:   3.66 kB[22m
+[2mdist/[22m[36massets/VaultPage-DWPqgdPR.js                [39m[1m[2m   13.16 kB[22m[1m[22m[2m │ gzip:   4.27 kB[22m
+[2mdist/[22m[36massets/CalendarPage-Cgpft3t3.js             [39m[1m[2m   13.99 kB[22m[1m[22m[2m │ gzip:   4.27 kB[22m
+[2mdist/[22m[36massets/BankPage-K2X98iJZ.js                 [39m[1m[2m   15.41 kB[22m[1m[22m[2m │ gzip:   4.73 kB[22m
+[2mdist/[22m[36massets/InvoicePage-VyrMsAkq.js              [39m[1m[2m   16.32 kB[22m[1m[22m[2m │ gzip:   4.39 kB[22m
+[2mdist/[22m[36massets/FinancialStatementsPage-wDz5quvw.js  [39m[1m[2m   16.35 kB[22m[1m[22m[2m │ gzip:   4.46 kB[22m
+[2mdist/[22m[36massets/nim-Cx8TNu57.js                      [39m[1m[2m   16.51 kB[22m[1m[22m[2m │ gzip:   6.58 kB[22m
+[2mdist/[22m[36massets/ExpensesPage-D3TMHjI_.js             [39m[1m[2m   16.94 kB[22m[1m[22m[2m │ gzip:   4.55 kB[22m
+[2mdist/[22m[36massets/BilanPage-BNA1oWKl.js                [39m[1m[2m   17.93 kB[22m[1m[22m[2m │ gzip:   4.56 kB[22m
+[2mdist/[22m[36massets/papaparse.min-B5Lulvfq.js            [39m[1m[2m   18.93 kB[22m[1m[22m[2m │ gzip:   7.01 kB[22m
+[2mdist/[22m[36massets/DeclarationsPage-Bhhwi8hj.js         [39m[1m[2m   19.72 kB[22m[1m[22m[2m │ gzip:   5.70 kB[22m
+[2mdist/[22m[36massets/InventoryPage-DBu4ftaK.js            [39m[1m[2m   23.74 kB[22m[1m[22m[2m │ gzip:   5.51 kB[22m
+[2mdist/[22m[36massets/AreaChart-CcT8wj79.js                [39m[1m[2m   24.03 kB[22m[1m[22m[2m │ gzip:   7.35 kB[22m
+[2mdist/[22m[36massets/JournalPage-DpvZa5vZ.js              [39m[1m[2m   26.54 kB[22m[1m[22m[2m │ gzip:   7.98 kB[22m
+[2mdist/[22m[36massets/AdminHubPage-Bi2a03Ap.js             [39m[1m[2m   27.58 kB[22m[1m[22m[2m │ gzip:   7.30 kB[22m
+[2mdist/[22m[36massets/ScanPage-mj-Y_Rob.js                 [39m[1m[2m   28.15 kB[22m[1m[22m[2m │ gzip:   7.93 kB[22m
+[2mdist/[22m[36massets/SettingsPage-J4KpwJxD.js             [39m[1m[2m   37.52 kB[22m[1m[22m[2m │ gzip:   9.05 kB[22m
+[2mdist/[22m[36massets/DashboardPage-CpHwWNJi.js            [39m[1m[2m   40.90 kB[22m[1m[22m[2m │ gzip:  12.32 kB[22m
+[2mdist/[22m[36massets/HubPage-B9EgEL6P.js                  [39m[1m[2m   46.10 kB[22m[1m[22m[2m │ gzip:  11.73 kB[22m
+[2mdist/[22m[36massets/SimulatorPage-Dqtj_rVq.js            [39m[1m[2m   56.70 kB[22m[1m[22m[2m │ gzip:  16.45 kB[22m
+[2mdist/[22m[36massets/index-oFAAbyFl.js                    [39m[1m[2m   61.59 kB[22m[1m[22m[2m │ gzip:  17.37 kB[22m
+[2mdist/[22m[36massets/jszip.min-BW2dymiY.js                [39m[1m[2m   97.12 kB[22m[1m[22m[2m │ gzip:  30.11 kB[22m
+[2mdist/[22m[36massets/index-DiW3VYh6.js                    [39m[1m[2m  118.24 kB[22m[1m[22m[2m │ gzip:  36.44 kB[22m
+[2mdist/[22m[36massets/react-vendor-Dkna1ZUr.js             [39m[1m[2m  234.90 kB[22m[1m[22m[2m │ gzip:  75.20 kB[22m
+[2mdist/[22m[36massets/CartesianChart-BrwXZTn5.js           [39m[1m[2m  341.18 kB[22m[1m[22m[2m │ gzip: 101.58 kB[22m
+[2mdist/[22m[36massets/index-BHbZpDK5.js                    [39m[1m[2m  352.44 kB[22m[1m[22m[2m │ gzip: 101.44 kB[22m
+[2mdist/[22m[36massets/module-DSDXzaWB.js                   [39m[1m[2m  376.16 kB[22m[1m[22m[2m │ gzip: 125.69 kB[22m
+[2mdist/[22m[36massets/index-0ZaQPPks.js                    [39m[1m[2m  406.20 kB[22m[1m[22m[2m │ gzip: 122.18 kB[22m
+[2mdist/[22m[36massets/file-extractor-BCDmZPAk.js           [39m[1m[2m  865.95 kB[22m[1m[22m[2m │ gzip: 238.86 kB[22m
+[32m✓ built in 27.44s[39m
+
+PWA v1.3.0
+mode      generateSW
+precache  71 entries (3757.09 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-e5cff4b9.js
+
+
+--- acceptance gate ---
+
+=== LIBRIWOUO v1.5 - FINAL ACCEPTANCE GATE ===
+
+PASS  SM-02 npm run lint (tsc --noEmit)            0 TypeScript errors
+PASS  Unit tests (vitest)                          75 tests passed
+PASS  SM-01 npm run build                          built in 20.29s
+PASS  No Firebase / Google SDK anywhere            70 source files clean; stock 28 deps
+PASS  BYOK AI layer + repo seam present            10 files
+PASS  AI layer test coverage                       89.44% statements
+PASS  i18n FR/EN key parity                        294 keys in both
+PASS  P-03 bundle < 2 MB gzip                      1.43 MB gzip
+PASS  S-02 no secrets in dist/                     66 files scanned
+PASS  Règle 6 no hardcoded secrets in src/         70 source files clean
+PASS  Tax engine coverage >= 80%                   98.18% statements
+PASS  wrangler.json carries no credentials         vars: OPENROUTER_BASE_URL, OPENROUTER_CHAT_MODEL, OPENROUTER_VISION_MODEL | kv: 1 binding(s)
+PASS  Evidence screenshots + build log             6 screenshots + build log
+
+13/13 checks passed
+
+ALL CHECKS PASSED
+
+
+--- bundle report ---
+file                                   raw KB    gzip KB      br KB
+pdf.worker-B1D2UnXD.mjs                2110.5      448.0      356.6
+file-extractor-BCDmZPAk.js              845.6      231.9      191.2
+module-DSDXzaWB.js                      367.3      122.5      103.3
+index-0ZaQPPks.js                       396.7      119.1      103.8
+CartesianChart-BrwXZTn5.js              333.2       99.0       82.7
+index-BHbZpDK5.js                       344.2       98.8       85.1
+react-vendor-Dkna1ZUr.js                229.4       73.3       63.4
+index-DiW3VYh6.js                       115.5       35.5       31.5
+jszip.min-BW2dymiY.js                    94.8       29.3       26.1
+index-BgidlrPw.css                      128.5       17.6       14.0
+index-oFAAbyFl.js                        60.1       16.6       14.5
+SimulatorPage-Dqtj_rVq.js                55.4       16.0       14.3
+DashboardPage-CpHwWNJi.js                39.9       12.0       10.8
+HubPage-B9EgEL6P.js                      45.0       11.4       10.2
+SettingsPage-J4KpwJxD.js                 36.6        8.8        7.8
+JournalPage-DpvZa5vZ.js                  25.9        7.8        6.9
+ScanPage-mj-Y_Rob.js                     27.5        7.7        6.9
+AreaChart-CcT8wj79.js                    23.5        7.2        6.4
+AdminHubPage-Bi2a03Ap.js                 26.9        7.1        6.3
+papaparse.min-B5Lulvfq.js                18.5        6.8        6.2
+nim-Cx8TNu57.js                          16.1        6.4        5.8
+DeclarationsPage-Bhhwi8hj.js             19.3        5.5        4.9
+InventoryPage-DBu4ftaK.js                23.2        5.4        4.8
+BankPage-K2X98iJZ.js                     15.0        4.6        4.1
+BilanPage-BNA1oWKl.js                    17.5        4.5        4.0
+ExpensesPage-D3TMHjI_.js                 16.5        4.4        4.0
+FinancialStatementsPage-wDz5quvw.js       16.0        4.3        3.9
+InvoicePage-VyrMsAkq.js                  15.9        4.3        3.8
+CalendarPage-Cgpft3t3.js                 13.7        4.2        3.7
+VaultPage-DWPqgdPR.js                    12.9        4.2        3.7
+PayrollPage-Bn8Oemag.js                  12.3        3.6        3.2
+ReferencesPage-DtwTlO6Y.js                8.0        3.1        2.8
+CartesianGrid-CclB216A.js                 7.8        2.8        2.5
+AgentSkillsPage-CLACTv2K.js               8.3        2.8        2.5
+PayrollSlipPage-Dj8S-d3e.js               8.6        2.6        2.4
+workbox-window.prod.es5-BBnX5xw4.js        5.6        2.3        2.0
+client-9tj9iIg_.js                        4.9        2.2        2.0
+CashflowPage-CVBH9Y6M.js                  4.7        2.0        1.9
+docx-generator-DYsYGQiP.js                8.5        2.0        1.8
+DocumentsPage-D02U_aJI.js                 3.7        1.6        1.5
+FileSaver.min-D_NDqZRE.js                 2.6        1.2        1.1
+LineItemsView-DTSzkddj.js                 1.1        0.6        0.5
+external-link-DhVfGJxd.js                 0.9        0.4        0.4
+cpu-Ckno5XCd.js                           0.8        0.4        0.3
+user-DiIyStW1.js                          0.7        0.4        0.3
+tag-Cg8xztrv.js                           0.5        0.3        0.3
+building-2-CCY4h7gY.js                    0.5        0.3        0.3
+phone-FBraF1TY.js                         0.5        0.3        0.3
+save-Bds86FjE.js                          0.5        0.3        0.3
+arrow-up-right-Dn7OKJJ_.js                0.6        0.3        0.3
+trash-2-Dk0iZnoS.js                       0.5        0.3        0.3
+cloud-upload-B818KFvF.js                  0.4        0.3        0.3
+funnel-DuIDrz2z.js                        0.4        0.3        0.3
+wallet-DQaBHI1p.js                        0.4        0.3        0.3
+eye-CtnWT_zz.js                           0.4        0.3        0.3
+download-3YaIIiZ4.js                      0.4        0.3        0.2
+presentation-Ci1bRogR.js                  0.4        0.3        0.2
+search-CI5gi4B7.js                        0.3        0.3        0.2
+clock-r4_WJz7m.js                         0.3        0.3        0.2
+arrow-left-DyuAJP03.js                    0.3        0.3        0.2
+errors-qyuvgdBe.js                        0.3        0.3        0.2
+plus-DA2wMYpn.js                          0.3        0.2        0.2
+chevron-right-CanNqOCD.js                 0.3        0.2        0.2
+--------------------------------------------------------------------
+TOTAL                                  5577.2     1457.7     1220.8
+
+P-03 target: total bundle < 2 MB gzipped
+1.42 MB gzip / 1.19 MB brotli
+
+PWA precache entries: 0
+
+
+--- secret scan on dist/ (S-02) ---
+RESULT: PASS — 66 files scanned, no real credentials
+
+--- firebase / google SDK references ---
+RESULT: PASS — 70 source files, no Firebase imports

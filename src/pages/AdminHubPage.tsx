@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, orderBy, onSnapshot, getDocs, deleteDoc, doc, writeBatch, where, updateDoc, limit } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { list, remove, subscribe, update } from '../services/repo';
+import { useAuth } from '../contexts/AuthContext';
 import { Bot, User, UserCircle, Clock, ShieldAlert, Trash2, Play, Table, ChevronRight, Building2, Receipt, MessageCircle, ArrowLeft, Search, Mail, ExternalLink, Activity, Bug, Lightbulb, HelpCircle, Sparkles, FlaskConical, Filter, CheckCircle2, Eye, Archive, Trash, Inbox, CalendarDays } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import { calculateTaxes, determineTaxRegime, TaxRegime } from '../lib/tax-rules';
@@ -25,7 +25,6 @@ type Feedback = {
   url?: string;
   userAgent?: string | null;
   viewport?: string | null;
-  isBeta?: boolean;
   status: 'new' | 'reviewed' | 'resolved' | 'archived';
   createdAt?: any;
   createdAtClient?: string;
@@ -44,6 +43,7 @@ export function AdminHubPage() {
   const [testResults, setTestResults] = useState<any[]>([]);
   const [isResetting, setIsResetting] = useState(false);
   const adminEmail = 'ulrichtapsoba2009@gmail.com';
+  const { user } = useAuth();
 
   // Feedback hub state
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
@@ -51,47 +51,42 @@ export function AdminHubPage() {
   const [fbSearch, setFbSearch] = useState('');
   const [fbStatus, setFbStatus] = useState<'all' | Feedback['status']>('all');
   const [fbCategory, setFbCategory] = useState<'all' | Feedback['category']>('all');
-  const [fbBeta, setFbBeta] = useState<'all' | 'beta' | 'normal'>('all');
   const [expandedFb, setExpandedFb] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!auth.currentUser || auth.currentUser.email !== adminEmail) return;
+    if (!user || user.email !== adminEmail) return;
 
     // We fetch everything to build the unified view
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [companiesSnap, transactionsSnap, conversationsSnap] = await Promise.all([
-          getDocs(collection(db, 'companies')),
-          getDocs(collection(db, 'transactions')),
-          getDocs(query(collection(db, 'conversations'), orderBy('updatedAt', 'desc')))
-        ]);
+        const companies = list<any>('companies', { scoped: false });
+        const transactions = list<any>('transactions', { scoped: false });
+        const conversations = list<any>('conversations', { scoped: false });
+        conversations.sort((a: any, b: any) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 
         const newMap: Record<string, UserData> = {};
 
-        companiesSnap.forEach(d => {
-          const data = d.data();
+        companies.forEach(d => {
           newMap[d.id] = {
-            profile: { id: d.id, ...data },
+            profile: { id: d.id, ...d },
             transactions: [],
             conversations: [],
             lastActivity: new Date(0).toISOString()
           };
         });
 
-        transactionsSnap.forEach(d => {
-          const data = d.data();
-          if (newMap[data.userId]) {
-            newMap[data.userId].transactions.push({ id: d.id, ...data });
+        transactions.forEach(d => {
+          if (newMap[d.userId]) {
+            newMap[d.userId].transactions.push({ id: d.id, ...d });
           }
         });
 
-        conversationsSnap.forEach(d => {
-          const data = d.data();
-          if (newMap[data.userId]) {
-            newMap[data.userId].conversations.push({ id: d.id, ...data });
-            if (data.updatedAt > newMap[data.userId].lastActivity) {
-              newMap[data.userId].lastActivity = data.updatedAt;
+        conversations.forEach(d => {
+          if (newMap[d.userId]) {
+            newMap[d.userId].conversations.push({ id: d.id, ...d });
+            if (d.updatedAt > newMap[d.userId].lastActivity) {
+              newMap[d.userId].lastActivity = d.updatedAt;
             }
           }
         });
@@ -105,54 +100,43 @@ export function AdminHubPage() {
     };
 
     fetchData();
-
-    // Set up listeners for real-time updates if needed (optional for admin panel frequency)
-    // For now we stick to manual refresh or periodic re-fetch for performance with large data
-  }, []);
+  }, [user]);
 
   // Feedback realtime listener — organised store for admin
   useEffect(() => {
-    if (!auth.currentUser || auth.currentUser.email !== adminEmail) return;
+    if (!user || user.email !== adminEmail) return;
     setFeedbackLoading(true);
-    // Try ordered by serverTimestamp; fallback to client timestamp if missing
-    const q = query(collection(db, 'bug_reports'), orderBy('createdAt', 'desc'), limit(200));
-    const unsub = onSnapshot(q, (snap) => {
-      const items: Feedback[] = snap.docs.map(d => {
-        const data: any = d.data();
-        return {
-          id: d.id,
-          userId: data.userId,
-          userEmail: data.userEmail || null,
-          companyName: data.companyName || null,
-          message: data.message,
-          category: (data.category as any) || 'other',
-          page: data.page || '/',
-          url: data.url || null,
-          userAgent: data.userAgent || null,
-          viewport: data.viewport || null,
-          isBeta: !!data.isBeta,
-          status: (data.status as any) || 'new',
-          createdAt: data.createdAt,
-          createdAtClient: data.createdAtClient || null,
-          adminNote: data.adminNote || null,
-          priority: data.priority || null,
-        };
-      });
+    // Local-first read: newest first, capped like the previous `limit(200)`
+    const unsub = subscribe<Feedback>('bug_reports', (rows) => {
+      const items: Feedback[] = rows
+        .slice()
+        .sort((a: any, b: any) => String(b.createdAt || b.createdAtClient || '').localeCompare(String(a.createdAt || a.createdAtClient || '')))
+        .slice(0, 200)
+        .map(d => {
+          const data: any = d;
+          return {
+            id: data.id,
+            userId: data.userId,
+            userEmail: data.userEmail || null,
+            companyName: data.companyName || null,
+            message: data.message,
+            category: (data.category as any) || 'other',
+            page: data.page || '/',
+            url: data.url || null,
+            userAgent: data.userAgent || null,
+            viewport: data.viewport || null,
+            status: (data.status as any) || 'new',
+            createdAt: data.createdAt,
+            createdAtClient: data.createdAtClient || null,
+            adminNote: data.adminNote || null,
+            priority: data.priority || null,
+          };
+        });
       setFeedbacks(items);
       setFeedbackLoading(false);
-    }, (err) => {
-      console.error('Feedback listener failed', err);
-      // fallback to getDocs without orderBy
-      getDocs(collection(db, 'bug_reports')).then(snap => {
-        const items: Feedback[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-        // sort by client time desc
-        items.sort((a: any, b: any) => (b.createdAtClient || '').localeCompare(a.createdAtClient || ''));
-        setFeedbacks(items as any);
-        setFeedbackLoading(false);
-      });
-    });
+    }, { scoped: false });
     return () => unsub();
-  }, []);
+  }, [user]);
 
   const runTests = () => {
     const testCases = [
@@ -174,13 +158,10 @@ export function AdminHubPage() {
     try {
       const collections = ['companies', 'transactions', 'conversations', 'simulations', 'bug_reports'];
       for (const collName of collections) {
-        const q = query(collection(db, collName));
-        const snapshot = await getDocs(q);
-        
-        // Batch size limit is 500, but for beta tests we assume it's small or we do it sequentially
-        const batch = writeBatch(db);
-        snapshot.docs.forEach((d) => batch.delete(d.ref));
-        await batch.commit();
+        const rows = list<any>(collName, { scoped: false });
+        for (const row of rows) {
+          remove(collName, row.id);
+        }
       }
       alert("Toutes les données ont été réinitialisées.");
       window.location.reload();
@@ -192,7 +173,7 @@ export function AdminHubPage() {
     }
   };
 
-  if (!auth.currentUser || auth.currentUser.email !== adminEmail) {
+  if (!user || user.email !== adminEmail) {
     return <Navigate to="/dashboard" />;
   }
 
@@ -227,8 +208,6 @@ export function AdminHubPage() {
     return feedbacks.filter(fb => {
       if (fbStatus !== 'all' && fb.status !== fbStatus) return false;
       if (fbCategory !== 'all' && fb.category !== fbCategory) return false;
-      if (fbBeta === 'beta' && !fb.isBeta) return false;
-      if (fbBeta === 'normal' && fb.isBeta) return false;
       if (fbSearch.trim()) {
         const q = fbSearch.toLowerCase();
         const hay = `${fb.message} ${fb.companyName || ''} ${fb.userEmail || ''} ${fb.page} ${fb.userId}`.toLowerCase();
@@ -236,26 +215,25 @@ export function AdminHubPage() {
       }
       return true;
     });
-  }, [feedbacks, fbStatus, fbCategory, fbBeta, fbSearch]);
+  }, [feedbacks, fbStatus, fbCategory, fbSearch]);
 
   const fbStats = useMemo(() => {
     const total = feedbacks.length;
     const newC = feedbacks.filter(f => f.status === 'new').length;
     const reviewed = feedbacks.filter(f => f.status === 'reviewed').length;
     const resolved = feedbacks.filter(f => f.status === 'resolved').length;
-    const beta = feedbacks.filter(f => f.isBeta).length;
     const bugs = feedbacks.filter(f => f.category === 'bug').length;
-    return { total, newC, reviewed, resolved, beta, bugs };
+    return { total, newC, reviewed, resolved, bugs };
   }, [feedbacks]);
 
   const updateFeedbackStatus = async (id: string, status: Feedback['status']) => {
     try {
-      await updateDoc(doc(db, 'bug_reports', id), { status, ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}) });
+      update('bug_reports', id, { status, ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}) });
     } catch (e) { console.error('update status failed', e); alert('Erreur mise à jour statut'); }
   };
   const deleteFeedback = async (id: string) => {
     if (!confirm('Supprimer ce retour définitivement ?')) return;
-    try { await deleteDoc(doc(db, 'bug_reports', id)); } catch (e) { console.error(e); alert('Suppression échouée'); }
+    try { remove('bug_reports', id); } catch (e) { console.error(e); alert('Suppression échouée'); }
   };
 
   const users = Object.values(usersMap).filter(u => 
@@ -312,10 +290,6 @@ export function AdminHubPage() {
                 <p className="text-[10px] uppercase tracking-widest text-emerald-400">Résolus</p>
                 <p className="text-2xl font-bold text-emerald-300 mt-1">{fbStats.resolved}</p>
               </div>
-              <div className="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/20">
-                <p className="text-[10px] uppercase tracking-widest text-sky-400">Bêta-testeurs</p>
-                <p className="text-2xl font-bold text-sky-300 mt-1 flex items-center gap-1.5"><FlaskConical className="w-4 h-4" /> {fbStats.beta}</p>
-              </div>
             </div>
 
             {/* Filters */}
@@ -344,11 +318,6 @@ export function AdminHubPage() {
                     <option value="idea">Idée</option>
                     <option value="question">Question</option>
                     <option value="other">Autre</option>
-                  </select>
-                  <select value={fbBeta} onChange={e => setFbBeta(e.target.value as any)} className="px-3 py-2.5 rounded-xl bg-black/30 border border-white/5 text-sm text-zinc-200">
-                    <option value="all">Tous testeurs</option>
-                    <option value="beta">Bêta uniquement</option>
-                    <option value="normal">Normaux</option>
                   </select>
                 </div>
               </div>
@@ -380,7 +349,6 @@ export function AdminHubPage() {
                           <CatIcon className="w-3.5 h-3.5" /> {catMeta.label}
                         </span>
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${stMeta.cls}`}>{stMeta.label}</span>
-                        {fb.isBeta && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 text-xs font-black"><FlaskConical className="w-3 h-3" /> BÊTA</span>}
                         <span className="text-xs text-zinc-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {formatFbDate(fb)}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">

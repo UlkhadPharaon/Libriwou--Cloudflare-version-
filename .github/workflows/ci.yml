@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, test & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Exact dependency versions from package-lock.json.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check (tsc --noEmit)
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Bundle size report
+        run: |
+          echo "### Bundle size" >> $GITHUB_STEP_SUMMARY
+          du -sh dist | awk '{print "dist total: "$1}' >> $GITHUB_STEP_SUMMARY
+          ls -la dist/assets | awk '{print $5, $9}' >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  # Blocking secret scan: a leaked key in the bundle is a P0 security bug (test S-02).
+  secret-scan:
+    name: Secret scan on built bundle
+    runs-on: ubuntu-latest
+    needs: verify
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Scan dist/ for leaked credentials
+        run: |
+          set -e
+          # NOTE: Firebase WEB config keys (AIza...) are deliberately NOT scanned —
+          # they are public by design and protected by Firestore rules + API key
+          # restrictions. Only genuinely secret shapes are rejected here.
+          PATTERNS='sk-or-v1-|sk_live_|sk_test_|LibriwouoBeta|tvly-dev-|whsec_|BEGIN PRIVATE KEY'
+          if grep -rEn "$PATTERNS" dist/ ; then
+            echo "::error::Potential secret found in the production bundle."
+            echo "::error::A VITE_* variable is inlined into the client JS. Remove it from the"
+            echo "::error::build environment and move the credential server-side (Cloudflare secret)."
+            exit 1
+          fi
+          echo "No secret patterns found in dist/."
+
+  # Deploy only on main, and only when the verification job passed.
+  deploy:
+    name: Deploy to Cloudflare Pages
+    runs-on: ubuntu-latest
+    needs: [verify, secret-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: pages deploy dist --project-name=${{ secrets.CLOUDFLARE_PAGES_PROJECT }}

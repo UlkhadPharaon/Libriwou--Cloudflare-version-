@@ -3,9 +3,10 @@ import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { auth, db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { create } from '../services/repo';
+import { signOutLocal } from '../services/session';
 import { determineTaxRegime } from '../lib/tax-rules';
+import { companyProfileSchema, validate } from '../lib/schemas';
 import { AlertCircle } from 'lucide-react';
 import { Tooltip } from '../components/Tooltip';
 import { OnboardingChecklist } from '../components/OnboardingChecklist';
@@ -16,7 +17,7 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher';
 export function OnboardingPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user, refreshProfile } = useAuth();
+  const { user, userId, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -42,7 +43,7 @@ export function OnboardingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !userId) return;
     
     if (!formData.companyName.trim() || !formData.ifu.trim() || !formData.rccm.trim() || !formData.sector.trim() || !formData.estimatedRevenue.trim()) {
       setError(t('onboarding.requiredError'));
@@ -56,7 +57,7 @@ export function OnboardingPage() {
       const taxRegime = determineTaxRegime(revenue);
 
       const companyPayload = {
-        userId: user.uid,
+        userId,
         companyName: formData.companyName,
         ifu: formData.ifu,
         rccm: formData.rccm,
@@ -71,11 +72,13 @@ export function OnboardingPage() {
         },
         createdAt: new Date().toISOString()
       };
-      try { const { localDb } = await import('../services/localDb'); localDb.add('companies', { id: user.uid, ...companyPayload }); } catch(e){ console.warn("[Onboarding] localDb save failed", e); }
-      await setDoc(doc(db, 'companies', user.uid), companyPayload);
+      // Phase 2.1 — validate before the write. A payload missing companyName/ifu
+      // now throws a Zod error visible in the console instead of silently corrupting the doc.
+      const validatedPayload = validate(companyProfileSchema, companyPayload, 'companies/{userId} (onboarding)');
+      create('companies', { ...validatedPayload, id: userId });
 
-      await refreshProfile();
-      
+      refreshProfile();
+
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
       console.error("Error saving profile", err);
@@ -101,7 +104,7 @@ export function OnboardingPage() {
           <h1 className="text-3xl font-serif tracking-tight mb-2 text-gold-100">{t('onboarding.title')}</h1>
           <p className="text-sm text-gold-500/70 font-sans">{t('onboarding.subtitle')}</p>
           <button 
-            onClick={() => auth.signOut()}
+            onClick={() => signOutLocal()}
             className="mt-4 text-xs font-semibold text-gold-500/60 hover:text-gold-400 transition-colors"
           >
             {t('onboarding.logout')}

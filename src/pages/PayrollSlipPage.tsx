@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Save, CheckCircle2, Download, FileEdit } from 'lucide-react';
-import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
+import { list } from '../services/repo';
+import { handleLocalError, OperationType } from '../lib/errors';
 import { calculatePayroll, PayrollCalculation } from '../lib/tax-rules';
 import { generatePayrollSlipDOCX } from '../lib/docx-generator';
 
 export function PayrollSlipPage() {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const slipData = location.state?.slipData;
@@ -26,14 +25,11 @@ export function PayrollSlipPage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
-    async function fetchCompany() {
-      if (user) {
-        const snap = await getDoc(doc(db, 'companies', user.uid));
-        if (snap.exists()) setCompany(snap.data());
-      }
-    }
-    fetchCompany();
-  }, [user]);
+    if (!userId) return;
+    // Local-first company profile (one-shot read).
+    const companies = list('companies');
+    if (companies.length > 0) setCompany(companies[0] as any);
+  }, [userId]);
 
   // Naive Net to Gross approximation for immediate feedback if they typed net only
   useEffect(() => {
@@ -58,9 +54,9 @@ export function PayrollSlipPage() {
   }, [grossSalary]);
 
   const handleSave = async () => {
-    if (!user || !calc || !employeeName) return;
+    if (!userId || !calc || !employeeName) return;
     const payload = {
-        userId: user.uid,
+        userId,
         type: 'PAYROLL',
         amountExclTax: calc.totalEmployerCost,
         vatAmount: 0,
@@ -81,11 +77,11 @@ export function PayrollSlipPage() {
         createdAt: new Date().toISOString()
       };
     try {
+      // Local-first: the vault copy is the source of truth (Firebase removed).
       const { localDb } = await import('../services/localDb');
       localDb.add('transactions', payload);
-      try { await addDoc(collection(db, 'transactions'), payload); } catch(e){ console.warn('[PayrollSlip] Firestore sync failed (local preserved):', e); }
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'transactions');
+      handleLocalError(error, OperationType.CREATE, 'transactions');
     }
 
     setSaved(true);

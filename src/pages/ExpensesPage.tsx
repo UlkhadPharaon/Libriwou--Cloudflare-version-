@@ -1,17 +1,14 @@
 import { useState, useEffect, Fragment } from 'react';
 import { ShoppingCart, Info, ArrowUpRight, ArrowDownRight, Plus, X, Pencil, ChevronDown } from 'lucide-react';
-import { db } from '../firebase';
 import { localDb } from '../services/localDb';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { ExtractedTransaction } from '../services/nim';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
 import { LineItemsView } from '../components/LineItemsView';
 
 export function ExpensesPage() {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const [transactions, setTransactions] = useState<ExtractedTransaction[]>([]);
   const [activeTab, setActiveTab] = useState<'ALL' | 'EXPENSE' | 'INCOME'>('ALL');
   
@@ -39,14 +36,14 @@ export function ExpensesPage() {
     setModalLines(prev => prev.map((l, i) => (i === idx ? { ...l, [key]: value } : l)));
 
   useEffect(() => {
-    if (!user) return;
-    const unsub = localDb.subscribe('transactions', user.uid, (list) => {
+    if (!userId) return;
+    const unsub = localDb.subscribe('transactions', userId, (list) => {
       const validData = list.filter(t => t.type === 'EXPENSE' || t.type === 'INCOME');
       validData.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(validData as ExtractedTransaction[]);
     });
     return () => unsub();
-  }, [user]);
+  }, [userId]);
 
   const openNewModal = () => {
     setEditingTx(null);
@@ -89,7 +86,7 @@ export function ExpensesPage() {
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newTxAmount || !newTxVendor) return;
+    if (!userId || !newTxAmount || !newTxVendor) return;
     
     setIsSubmitting(true);
     try {
@@ -110,7 +107,7 @@ export function ExpensesPage() {
         });
       } else {
         const txData = {
-          userId: user.uid,
+          userId,
           type: newTxType,
           date: newTxDate,
           vendorName: newTxVendor,

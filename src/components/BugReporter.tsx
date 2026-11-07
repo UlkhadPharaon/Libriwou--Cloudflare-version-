@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { useTranslation } from 'react-i18next';
 import { Bug, Send, Sparkles, MessageSquare, Lightbulb, HelpCircle, AlertTriangle, X } from 'lucide-react';
 import { ErrorReporter } from './ErrorReporter';
-import { isBetaEmail } from '../lib/betaConfig';
+import { useAuth } from '../contexts/AuthContext';
+import { localDb } from '../services/localDb';
 
 type FeedbackCategory = 'bug' | 'idea' | 'question' | 'other';
 
 export function BugReporterButton() {
   const { t } = useTranslation();
+  const { user, userId } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [category, setCategory] = useState<FeedbackCategory>('bug');
@@ -23,37 +23,24 @@ export function BugReporterButton() {
     other: t('feedback.catOther')
   };
 
-  // Try to fetch company name for richer admin reference (best-effort)
+  // Company name for the report — read from the local repository.
   useEffect(() => {
-    if (!isOpen || !auth.currentUser) return;
-    const uid = auth.currentUser.uid;
-    getDoc(doc(db, 'companies', uid))
-      .then(snap => {
-        if (snap.exists()) {
-          const d: any = snap.data();
-          setCompanyLabel(d.companyName || null);
-        }
-      })
-      .catch(() => {});
-    // fallback to localDb
-    import('../services/localDb').then(({ localDb }) => {
-      try {
-        const local: any = localDb.get('companies', uid);
-        if (local?.companyName) setCompanyLabel(local.companyName);
-      } catch {}
-    });
-  }, [isOpen]);
+    if (!isOpen || !userId) return;
+    try {
+      const local: any = localDb.get('companies', userId);
+      if (local?.companyName) setCompanyLabel(local.companyName);
+    } catch {}
+  }, [isOpen, userId]);
 
   const handleSubmit = async () => {
-    if (!auth.currentUser || message.trim().length < 10) return;
+    if (!userId || message.trim().length < 10) return;
     setIsSubmitting(true);
     try {
-      const user = auth.currentUser;
-      const isBeta = isBetaEmail(user.email);
-      // Enrich with references for admin triage
-      await addDoc(collection(db, 'bug_reports'), {
-        userId: user.uid,
-        userEmail: user.email || null,
+      // Stored on the device. There is no backend to send it to yet — when one
+      // exists, `repo.create` will mirror it automatically (see services/repo.ts).
+      localDb.add('bug_reports', {
+        userId,
+        userEmail: user?.email || null,
         companyName: companyLabel || null,
         message: message.trim(),
         category,
@@ -61,19 +48,16 @@ export function BugReporterButton() {
         url: window.location.href,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
         viewport: typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : null,
-        isBeta,
-        status: 'new', // new | reviewed | resolved | archived
-        createdAt: serverTimestamp(),
-        // denormalized time for local fallback sorting
-        createdAtClient: new Date().toISOString(),
+        status: 'new',
+        createdAt: new Date().toISOString(),
       });
       setMessage('');
       setCategory('bug');
       setIsOpen(false);
       window.dispatchEvent(new CustomEvent('show-error', { detail: t('feedback.thanks') } as any));
-      console.log('[Feedback] sent', { category, isBeta });
+      console.log('[Feedback] saved locally', { category });
     } catch (error: any) {
-      console.error('[Feedback] send failed', error);
+      console.error('[Feedback] save failed', error);
       ErrorReporter.report(t('feedback.error', { msg: error?.message || '—' }));
     } finally {
       setIsSubmitting(false);
@@ -137,7 +121,6 @@ export function BugReporterButton() {
         <span className="text-[11px] text-zinc-600">{message.trim().length < 10 ? t('feedback.minChars', { count: 10 - message.trim().length }) : t('feedback.ready')}</span>
         <span className="text-[11px] text-zinc-500 flex items-center gap-1">
           <span className="hidden sm:inline">{t('feedback.context', { page: window.location.pathname })}</span>
-          {auth.currentUser?.email && isBetaEmail(auth.currentUser.email) && <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 text-[10px]">BÊTA</span>}
         </span>
       </div>
 

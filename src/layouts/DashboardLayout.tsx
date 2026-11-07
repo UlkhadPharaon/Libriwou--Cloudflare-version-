@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Wallet, LayoutDashboard, Inbox, LogOut, Menu, X, FileText, Calendar, Landmark, Calculator, Receipt, FolderLock, Bell, Settings, Sparkles, ShieldAlert, Activity, Users, ShoppingCart, Package, BookOpen, FileSpreadsheet, Scale, Library, BrainCircuit, FlaskConical } from 'lucide-react';
-import { logout } from '../firebase';
+import { Wallet, LayoutDashboard, Inbox, LogOut, Menu, X, FileText, Calendar, Landmark, Calculator, Receipt, FolderLock, Bell, Settings, Sparkles, ShieldAlert, Activity, Users, ShoppingCart, Package, BookOpen, FileSpreadsheet, Scale, Library, BrainCircuit } from 'lucide-react';
+import { signOutLocal } from '../services/session';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
 import { AnimatePresence, motion } from 'motion/react';
@@ -18,7 +18,6 @@ export function DashboardLayout() {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { deadlines } = useTaxNotifications();
-  const { isBeta } = useAuth();
 
   const navItems = [
     { path: '/dashboard', label: t('nav.overview'), icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -44,7 +43,7 @@ export function DashboardLayout() {
 
   const SidebarContent = () => {
     const { t } = useTranslation();
-    const { user, isBeta: isBetaSidebar } = useAuth();
+    const { user } = useAuth();
     const isAdmin = user?.email === 'ulrichtapsoba2009@gmail.com';
 
     return (
@@ -59,12 +58,6 @@ export function DashboardLayout() {
               <X className="w-5 h-5" />
             </button>
           </div>
-          {isBetaSidebar && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-black tracking-widest uppercase w-fit">
-              <FlaskConical className="w-3 h-3" />
-              {t('auth.betaSidebarBadge')}
-            </div>
-          )}
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 space-y-1 mt-4 pb-4">
@@ -121,17 +114,12 @@ export function DashboardLayout() {
 
         <div className="p-4 border-t border-border-subtle flex flex-col gap-2">
           <LanguageSwitcher variant="compact" />
-          {isBetaSidebar && (
-            <div className="px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-[11px] text-emerald-300/80 leading-relaxed">
-              {t('auth.betaSidebarHint')}
-            </div>
-          )}
-          <button 
-            onClick={logout}
+          <button
+            onClick={() => signOutLocal()}
             className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           >
             <LogOut className="w-4 h-4" />
-            {isBetaSidebar ? t('auth.logoutDemo') : t('auth.logout')}
+            {t('auth.logout')}
           </button>
         </div>
     </>
@@ -178,16 +166,6 @@ export function DashboardLayout() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
-        {isBeta && (
-          <div className="mx-4 mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 flex items-center gap-3">
-            <FlaskConical className="w-5 h-5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold leading-none">{t('auth.betaBannerTitle')}</p>
-              <p className="text-xs opacity-80 mt-1">{t('auth.betaBannerDesc')}</p>
-            </div>
-            <button onClick={logout} className="hidden sm:inline-flex px-3 py-1.5 rounded-lg bg-emerald-500 text-zinc-950 text-xs font-bold hover:bg-emerald-400 transition-colors shrink-0">{t('auth.logoutDemo')}</button>
-          </div>
-        )}
         {deadlines.length > 0 && (
           <div className="mx-4 mt-4 p-4 rounded-xl bg-gold-500/10 border border-border-subtle text-gold-200 flex items-center gap-3">
             <Bell className="w-5 h-5" />

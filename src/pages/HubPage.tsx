@@ -5,15 +5,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, Paperclip, Bot, User, UserCircle, FileText, X, CheckCircle2, Loader2, AlertCircle, MessageSquarePlus, MessageSquare, Menu, Mic, Receipt, Ghost, Trash2, Edit2, FolderPlus, ChevronRight, ChevronDown, Save } from 'lucide-react';
 import { sendChatMessage, ExtractedTransaction } from '../services/nim';
 import { extractTextFromFile } from '../lib/file-extractor';
-import { db } from '../firebase';
 import { localDb } from '../services/localDb';
 import { useAuth } from '../contexts/AuthContext';
+import { subscribe, list, find, create, update, remove } from '../services/repo';
 import { ErrorReporter } from '../components/ErrorReporter';
-import { collection, addDoc, query, where, onSnapshot, doc, getDoc, updateDoc, deleteDoc, orderBy, getDocs, setDoc } from 'firebase/firestore';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { calculateTaxes, TaxRegime } from '../lib/tax-rules';
-import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
+import { handleLocalError, OperationType } from '../lib/errors';
 import { useTheme } from '../contexts/ThemeContext';
 
 type Message = {
@@ -62,7 +61,7 @@ const getHubPersist = () => {
 };
 
 export function HubPage() {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const { theme } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQueryHandled = useRef(false);
@@ -174,7 +173,7 @@ export function HubPage() {
   const isWelcomeScreen = messages.length === 1 && !currentConversationId;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Persist messages to survive page navigation refresh / crash — restores conversation even if Firestore lags.
+  // Persist messages to survive page navigation refresh / crash — restores conversation even if the local store lags.
   // NOTE : les objets File ne survivent pas à JSON.stringify (deviennent {}) et
   // faisaient crasher le rendu au rechargement (msg.file.type undefined) — on ne
   // garde que le nom du fichier.
@@ -198,49 +197,41 @@ export function HubPage() {
   }, [isTyping]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
-    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
-      if (list.length > 0) setCompany(list[0] as any);
+    const unsubscribeCompany = subscribe<any>('companies', (rows) => {
+      if (rows.length > 0) setCompany(rows[0] as any);
       else {
-        // One-time cloud hydration
-        import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
-          getDoc(fdoc(db, 'companies', user.uid)).then(s => {
-            if (s.exists()) {
-              const d = s.data() as any; setCompany(d);
-              try { if(!localDb.get('companies', user.uid)) localDb.add('companies', { id: user.uid, ...d }); } catch {}
-            }
-          });
-        });
+        // Local fallback: the row exists but is not scoped to this session
+        // (older data written before the owner field was normalised).
+        const companyDoc = find<any>('companies', userId);
+        if (companyDoc) {
+          setCompany(companyDoc);
+          try { if (!localDb.get('companies', userId)) localDb.add('companies', { id: userId, ...companyDoc }); } catch {}
+        }
       }
     });
 
-    const unsubscribeSnapshot = localDb.subscribe('transactions', user.uid, (txs) => {
+    const unsubscribeSnapshot = subscribe<ExtractedTransaction>('transactions', (txs) => {
       setTransactions(txs as ExtractedTransaction[]);
     });
 
-    const convQ = query(collection(db, 'conversations'), where('userId', '==', user.uid), orderBy('updatedAt', 'desc'));
-    const unsubscribeConv = onSnapshot(convQ, (snapshot) => {
-      const convs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Conversation));
+    const unsubscribeConv = subscribe<Conversation>('conversations', (rows) => {
+      const convs = rows
+        .slice()
+        .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))) as Conversation[];
       setConversations(convs);
-    }, (err) => {
-      console.error("Error fetching conversations:", err);
     });
 
-    const projQ = query(collection(db, 'projects'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
-    const unsubscribeProj = onSnapshot(projQ, (snapshot) => {
-      const projs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+    const unsubscribeProj = subscribe<Project>('projects', (rows) => {
+      const projs = rows
+        .slice()
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) as Project[];
       setProjects(projs);
-    }, (err) => {
-      console.error("Error fetching projects:", err);
     });
 
-    const skillsQ = query(collection(db, 'agent_skills'), where('userId', '==', user.uid));
-    const unsubscribeSkills = onSnapshot(skillsQ, (snapshot) => {
-      const skills = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAgentSkills(skills);
-    }, (err) => {
-      console.error("Error fetching agent skills:", err);
+    const unsubscribeSkills = subscribe<any>('agent_skills', (rows) => {
+      setAgentSkills(rows);
     });
 
     return () => {
@@ -250,13 +241,14 @@ export function HubPage() {
       unsubscribeProj();
       unsubscribeSkills();
     };
-  }, [user]);
+  }, [userId]);
 
   const handleCreateProject = async (name: string) => {
-    if (!user) return;
+    if (!userId) return;
     try {
-      await addDoc(collection(db, 'projects'), {
-        userId: user.uid,
+      create('projects', {
+        id: `proj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        userId,
         name,
         createdAt: new Date().toISOString()
       });
@@ -267,7 +259,7 @@ export function HubPage() {
 
   const handleRenameConversation = async (id: string, newTitle: string) => {
     try {
-      await updateDoc(doc(db, 'conversations', id), { title: newTitle });
+      update('conversations', id, { title: newTitle });
     } catch (err) {
       console.error(err);
     }
@@ -276,7 +268,7 @@ export function HubPage() {
   const handleDeleteConversation = async (id: string) => {
     if (!confirm('Supprimer cette discussion ?')) return;
     try {
-      await deleteDoc(doc(db, 'conversations', id));
+      remove('conversations', id);
       if (currentConversationId === id) {
         startNewChat();
       }
@@ -287,38 +279,29 @@ export function HubPage() {
 
   const handleMoveToProject = async (id: string, projectId: string | null) => {
     try {
-      await updateDoc(doc(db, 'conversations', id), { projectId });
+      update('conversations', id, { projectId });
     } catch (err) {
       console.error(err);
     }
   };
 
   const handleAIAction = async (name: string, args: any) => {
-    if (!user) throw new Error("Non authentifié");
+    if (!userId) throw new Error("Non authentifié");
     
     if (name === 'propose_transaction') {
       return { success: true, status: 'proposed_to_user' };
     }
     
     if (name === 'update_company_profile') {
-      try { localDb.update('companies', user.uid, { id: user.uid, ...args }); if(!localDb.get('companies', user.uid)) localDb.add('companies', { id: user.uid, userId: user.uid, ...args }); setCompany((prev: any) => ({ ...prev, ...args })); } catch(e){ console.warn("[Hub] local company update failed", e); }
-      try { const companyRef = doc(db, 'companies', user.uid); await updateDoc(companyRef, args); } catch(e){ console.warn("[Hub] cloud company update failed (local preserved)", e); }
+      try { update('companies', userId, { id: userId, ...args }); if(!find('companies', userId)) create('companies', { id: userId, userId, ...args }); setCompany((prev: any) => ({ ...prev, ...args })); } catch(e){ console.warn("[Hub] local company update failed", e); }
       return { success: true, updatedFields: args };
     }
     
     if (name === 'delete_transaction') {
       // Local-first delete
-      try { localDb.delete('transactions', args.transactionId); } catch {}
-      const txRef = doc(db, 'transactions', args.transactionId);
-      try {
-        const txSnap = await getDoc(txRef);
-        if (txSnap.exists() && txSnap.data().userId === user.uid) {
-          await deleteDoc(txRef);
-          return { success: true };
-        }
-      } catch {}
-      // If not found in cloud but deleted locally, still success
-      if (localDb.get('transactions', args.transactionId) === null) return { success: true };
+      try { remove('transactions', args.transactionId); } catch {}
+      // Gone from the local store: still success
+      if (find('transactions', args.transactionId) === null) return { success: true };
       throw new Error("Transaction non trouvée ou accès refusé");
     }
 
@@ -328,40 +311,43 @@ export function HubPage() {
 
     if (name === 'fetch_all_transactions') {
       try {
-        const local = localDb.getAll('transactions', user.uid);
-        if (local.length > 0) return { success: true, transactions: local };
-      } catch {}
-      const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      const allTxs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true, transactions: allTxs };
+        const allTxs = list<any>('transactions');
+        return { success: true, transactions: allTxs };
+      } catch (error) {
+        return handleLocalError(error, OperationType.LIST, 'transactions');
+      }
     }
 
     if (name === 'fetch_all_invoices') {
-      try { const local = localDb.getAll('transactions', user.uid).filter((t:any)=> t.type==='INCOME'); if (local.length>0) return { success: true, invoices: local }; } catch {}
-      const q = query(collection(db, 'invoices'), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      return { success: true, invoices: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) };
+      try {
+        const invoices = list<any>('transactions').filter((t: any) => t.type === 'INCOME');
+        return { success: true, invoices };
+      } catch (error) {
+        return handleLocalError(error, OperationType.LIST, 'transactions');
+      }
     }
 
     if (name === 'fetch_inventory_items') {
-      try { const local = localDb.getAll('inventory', user.uid); if (local.length>0) return { success: true, inventory: local }; } catch {}
-      const q = query(collection(db, 'inventory'), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      return { success: true, inventory: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) };
+      try {
+        const inventory = list<any>('inventory');
+        return { success: true, inventory };
+      } catch (error) {
+        return handleLocalError(error, OperationType.LIST, 'inventory');
+      }
     }
 
     if (name === 'fetch_employee_list') {
-      try { const local = localDb.getAll('employees', user.uid); if (local.length>0) return { success: true, employees: local }; } catch {}
-      const q = query(collection(db, 'employees'), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      return { success: true, employees: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) };
+      try {
+        const employees = list<any>('employees');
+        return { success: true, employees };
+      } catch (error) {
+        return handleLocalError(error, OperationType.LIST, 'employees');
+      }
     }
 
     if (name === 'fetch_fiscal_calendar') {
-      const companyRef = doc(db, 'companies', user.uid);
-      const companySnap = await getDoc(companyRef);
-      const deadlines = companySnap.exists() ? (companySnap.data().deadlines || []) : [];
+      const companyDoc = find<any>('companies', userId);
+      const deadlines = companyDoc?.deadlines || [];
       return { success: true, deadlines };
     }
 
@@ -416,29 +402,28 @@ export function HubPage() {
         setMessages(currentMessages);
 
         let convId = currentConversationId;
-        // Persistence must NEVER block the answer: the shared beta account can be
-        // denied by Firestore rules (unverified email / shared uid) and an await
-        // throwing here used to abort handleSend before the AI call — stuck typing.
+        // Persistence must NEVER block the answer: a local write failing here
+        // used to abort handleSend before the AI call — stuck typing.
         try {
-            if (!convId && user && !isEphemeralMode) {
-                const docRef = await addDoc(collection(db, 'conversations'), {
-                    userId: user.uid,
+            if (!convId && userId && !isEphemeralMode) {
+                convId = create('conversations', {
+                    id: `conv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+                    userId,
                     title: userMsg.text.slice(0, 30) + (userMsg.text.length > 30 ? '...' : '') || 'Nouvelle discussion',
                     updatedAt: new Date().toISOString(),
                     projectId: activeProjectId,
                     isEphemeral: false,
                     messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
                 });
-                convId = docRef.id;
                 setCurrentConversationId(convId);
             } else if (convId && !isEphemeralMode) {
-                await updateDoc(doc(db, 'conversations', convId), {
+                update('conversations', convId, {
                     updatedAt: new Date().toISOString(),
                     messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
                 });
             }
         } catch (persistError) {
-            // NOTE: handleFirestoreError re-throws, so only log here — the answer must still be delivered.
+            // NOTE: only log here — the answer must still be delivered.
             console.warn("[Hub] Conversation persistence failed, continuing without save:", persistError);
             convId = null;
         }
@@ -483,7 +468,7 @@ export function HubPage() {
                 setMessages(currentMessages);
 
                 if (convId && !isEphemeralMode) {
-                    await updateDoc(doc(db, 'conversations', convId), {
+                    update('conversations', convId, {
                         updatedAt: new Date().toISOString(),
                         messages: currentMessages.map(m => ({ id: m.id, role: m.role, text: m.text, actions: m.actions || null }))
                     });
@@ -1305,9 +1290,9 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
   messageId: string,
   isAlreadySaved?: boolean
 }) {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const [status, setStatus] = useState<'pending' | 'saved' | 'error'>(isAlreadySaved ? 'saved' : 'pending');
-  // Données persistées (Firestore/localStorage) parfois incomplètes : ne jamais crasher le rendu.
+  // Données persistées (local/IndexedDB) parfois incomplètes : ne jamais crasher le rendu.
   // NOTE règles des hooks : tous les useState ci-dessous sont inconditionnels ;
   // le garde anti-crash est APRÈS les hooks.
   const safeArgs = args && typeof args === 'object' ? args : {} as any;
@@ -1364,7 +1349,7 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
   };
 
   const handleConfirm = async () => {
-    if (!user) return;
+    if (!userId) return;
     try {
       // Force numeric conversion (depuis les champs édités)
       const cleanLines = lines
@@ -1393,33 +1378,23 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
         syscohadaCode: form.syscohadaCode,
         description: form.description,
         ...(cleanLines.length > 0 ? { lineItems: cleanLines } : {}),
-        userId: user.uid,
+        userId,
         createdAt: new Date().toISOString(),
         fecFingerprint: `NEO-${Date.now()}`,
         paymentMethod: 'Cash',
         fecValid: true
       };
 
-      // 1) PRIMARY: Local-first save (IndexedDB) — visible immediately in Dépenses / Journal / Vault
+      // 1) PRIMARY (and only) write: local-first save (IndexedDB) —
+      // visible immediately in Dépenses / Journal / Vault.
       localDb.add('transactions', transactionData);
-
-      // 2) BEST-EFFORT: Cloud sync to Firestore (for multi-device / backup).
-      // Non bloquant : la sauvegarde locale a déjà réussi. Ne jamais lever ici
-      // (handleFirestoreError throw — cela afficherait "erreur" à tort).
-      try {
-        await addDoc(collection(db, 'transactions'), transactionData);
-      } catch (error) {
-        console.warn('[Neo] Firestore sync failed (local save preserved):', error);
-      }
       setStatus('saved');
 
-      // Update conversation in Firestore to mark this action as saved
+      // Marque l'action comme enregistrée sur la conversation
       if (conversationId) {
-        const convRef = doc(db, 'conversations', conversationId);
-        const convSnap = await getDoc(convRef);
-        if (convSnap.exists()) {
-          const data = convSnap.data();
-          const updatedMessages = data.messages.map((m: any) => {
+        const conversation = find<any>('conversations', conversationId);
+        if (conversation) {
+          const updatedMessages = conversation.messages.map((m: any) => {
             if (m.id === messageId) {
               return {
                 ...m,
@@ -1433,7 +1408,7 @@ function TransactionProposal({ args, conversationId, messageId, isAlreadySaved =
             }
             return m;
           });
-          await updateDoc(convRef, { messages: updatedMessages });
+          update('conversations', conversationId, { messages: updatedMessages });
         }
       }
     } catch (err) {

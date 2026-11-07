@@ -1,8 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { localDb } from '../services/localDb';
+import { subscribe, list, create, remove } from '../services/repo';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTaxes, TaxCalculation, TaxRegime } from '../lib/tax-rules';
 import { ExtractedTransaction } from '../services/nim';
@@ -10,10 +9,22 @@ import { fetchDailyIntelligence, IntelligenceNews } from '../services/intelligen
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { Calendar, Sparkles, TrendingUp, TrendingDown, Clock, ArrowUpRight, Wallet, User, Bell, Download, Briefcase, Gavel, Newspaper, RefreshCcw, Loader2, ChevronRight, Activity, PieChart, ExternalLink, Bot, Plus, FileText, Scan, Zap, Target, ArrowRight, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { saveAs } from 'file-saver';
 import { cn } from '../lib/utils';
 
+const readFileAsText = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+
+/** A stored feed row: the news itself plus the local row id. */
+type IntelligenceFeedItem = IntelligenceNews & { id: string };
+
 export function DashboardPage() {
-  const { user } = useAuth();
+  const { user, userId } = useAuth();
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState<ExtractedTransaction[]>([]);
   
@@ -21,7 +32,7 @@ export function DashboardPage() {
   const [taxData, setTaxData] = useState<TaxCalculation | null>(null);
   const [nextDeadline, setNextDeadline] = useState<any>(null);
   
-  const [intelligence, setIntelligence] = useState<IntelligenceNews[]>([]);
+  const [intelligence, setIntelligence] = useState<IntelligenceFeedItem[]>([]);
   const [intelPage, setIntelPage] = useState(0);
   const [loadingIntel, setLoadingIntel] = useState(false);
   
@@ -37,7 +48,7 @@ export function DashboardPage() {
   }, []);
 
   const handleCloudBackup = async () => {
-    if (!user) return;
+    if (!userId) return;
     if (!passphrase.trim() || passphrase.length < 8) {
       setVaultMsg({ type: 'error', text: 'La phrase de passe doit contenir au moins 8 caractères pour être hautement sécurisée.' });
       return;
@@ -45,7 +56,8 @@ export function DashboardPage() {
     setVaultLoading(true);
     setVaultMsg(null);
     try {
-      await localDb.uploadEncryptedCloudBackup(user.uid, passphrase);
+      const vault = await localDb.createEncryptedCloudBackup(userId, passphrase);
+      saveAs(new Blob([JSON.stringify(vault)], { type: 'application/json' }), `libriwouo_coffre_zk_${new Date().toISOString().split('T')[0]}.json`);
       setVaultMsg({ type: 'success', text: '✓ Sauvegarde chiffrée de bout en bout (Zéro-Knowledge) envoyée avec succès sur le cloud !' });
     } catch (err: any) {
       setVaultMsg({ type: 'error', text: err.message || 'Une erreur est survenue lors de la sauvegarde.' });
@@ -55,27 +67,45 @@ export function DashboardPage() {
   };
 
   const handleCloudRestore = async () => {
-    if (!user) return;
+    if (!userId) return;
     if (!passphrase.trim()) {
       setVaultMsg({ type: 'error', text: 'Veuillez saisir votre phrase de passe maîtresse.' });
       return;
     }
     setVaultLoading(true);
     setVaultMsg(null);
-    try {
-      await localDb.restoreEncryptedCloudBackup(user.uid, passphrase);
-      setVaultMsg({ type: 'success', text: '✓ Restauration et déchiffrement terminés avec succès ! Vos données locales sont rechargées.' });
-    } catch (err: any) {
-      setVaultMsg({ type: 'error', text: err.message || 'La phrase de passe est incorrecte ou aucun coffre n\'existe pour cet utilisateur.' });
-    } finally {
-      setVaultLoading(false);
-    }
+
+    // The ciphertext now comes from the encrypted file the user kept: there is no
+    // server to download it from, so restore reads the same blob backup produced.
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        setVaultLoading(false);
+        setVaultMsg({ type: 'error', text: 'Aucun fichier de sauvegarde sélectionné.' });
+        return;
+      }
+      try {
+        const text = await readFileAsText(file);
+        const parsed = JSON.parse(text);
+        const ciphertext = typeof parsed?.ciphertext === 'string' ? parsed.ciphertext : text;
+        await localDb.restoreEncryptedBackup(ciphertext, passphrase);
+        setVaultMsg({ type: 'success', text: '✓ Restauration et déchiffrement terminés avec succès ! Vos données locales sont rechargées.' });
+      } catch (err: any) {
+        setVaultMsg({ type: 'error', text: err.message || 'La phrase de passe est incorrecte ou aucun coffre n\'existe pour cet utilisateur.' });
+      } finally {
+        setVaultLoading(false);
+      }
+    };
+    input.click();
   };
 
   const handleFileExport = async () => {
-    if (!user) return;
+    if (!userId) return;
     try {
-      const payload = await localDb.exportLocalPayload(user.uid);
+      const payload = await localDb.exportLocalPayload(userId);
       const blob = new Blob([payload], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -90,7 +120,7 @@ export function DashboardPage() {
   };
 
   const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!user || !e.target.files?.[0]) return;
+    if (!userId || !e.target.files?.[0]) return;
     setVaultLoading(true);
     setVaultMsg(null);
     const file = e.target.files[0];
@@ -98,7 +128,7 @@ export function DashboardPage() {
     reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
-        await localDb.importLocalPayload(text, user.uid);
+        await localDb.importLocalPayload(text, userId);
         setVaultMsg({ type: 'success', text: '✓ Fichier de sauvegarde locale importé et rechargé avec succès !' });
       } catch (err) {
         setVaultMsg({ type: 'error', text: 'Fichier de sauvegarde corrompu ou invalide.' });
@@ -110,10 +140,10 @@ export function DashboardPage() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
-    const unsubscribeCompany = localDb.subscribe('companies', user.uid, (list) => {
-      const compData = (list[0] as any) || null;
+    const unsubscribeCompany = subscribe<any>('companies', (rows) => {
+      const compData = (rows[0] as any) || null;
       if (compData) {
         setCompany(compData);
         const today = new Date();
@@ -128,30 +158,18 @@ export function DashboardPage() {
           if (today.getDate() > 10) nextCme.setMonth(month + 1);
           setNextDeadline({ title: 'Paiement CME', date: nextCme, priority: 'MEDIUM' });
         }
-      } else {
-        import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
-          getDoc(fdoc(db, 'companies', user.uid)).then(s => {
-            if (s.exists()) {
-              const d = s.data() as any; setCompany(d);
-              try { if(!localDb.get('companies', user.uid)) localDb.add('companies', { id: user.uid, ...d }); } catch {}
-              const today = new Date(); const year = today.getFullYear(); const month = today.getMonth();
-              if (d.taxRegime === 'RSI' || d.taxRegime === 'RNI') { const n = new Date(year, month, 20); if (today.getDate() > 20) n.setMonth(month+1); setNextDeadline({ title: 'Déclaration TVA (G50)', date: n, priority: 'HIGH' }); }
-              else if (d.taxRegime === 'CME') { const n = new Date(year, month, 10); if (today.getDate() > 10) n.setMonth(month+1); setNextDeadline({ title: 'Paiement CME', date: n, priority: 'MEDIUM' }); }
-            }
-          });
-        });
       }
     });
 
-    const unsubscribeSnapshot = localDb.subscribe('transactions', user.uid, (txs) => {
-      setTransactions(txs as ExtractedTransaction[]);
+    const unsubscribeSnapshot = subscribe<ExtractedTransaction>('transactions', (txs) => {
+      setTransactions(txs);
     });
 
     return () => {
       unsubscribeCompany();
       unsubscribeSnapshot();
     };
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     if (company && transactions) {
@@ -167,17 +185,16 @@ export function DashboardPage() {
   useEffect(() => {
     if (company && company.sector) {
       const today = new Date().toISOString().split('T')[0];
-      const intelRef = collection(db, 'intelligence_feed');
-      const q = query(intelRef, where("date", "==", today));
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const allNews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as IntelligenceNews))
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        const relevantNews = allNews.filter(news => 
-          news.targetSectors.includes('GLOBAL') || 
+      const unsubscribe = subscribe<IntelligenceFeedItem>('intelligence_feed', (rows) => {
+        const allNews = rows
+          .filter(news => news.date === today)
+          .sort((a, b) => Date.parse(String(b.createdAt || '')) - Date.parse(String(a.createdAt || '')));
+        const relevantNews = allNews.filter(news =>
+          news.targetSectors.includes('GLOBAL') ||
           news.targetSectors.includes(company.sector)
         );
-        
+
         if (relevantNews.length > 0) {
           setIntelligence(relevantNews);
           // Optional: reset page to 0 if data changes significantly
@@ -194,7 +211,21 @@ export function DashboardPage() {
     if (!company) return;
     setLoadingIntel(true);
     try {
-      await fetchDailyIntelligence(company.sector, force);
+      const news = await fetchDailyIntelligence(company.sector, force);
+      const today = new Date().toISOString().split('T')[0];
+      // Persist the day's analysis so the subscription above drives the UI exactly
+      // like the old Firestore listener did (client-side write, local cache).
+      list<{ id: string; date?: string }>('intelligence_feed')
+        .filter(item => item.date === today)
+        .forEach(item => remove('intelligence_feed', item.id));
+      news.forEach((item, index) => {
+        create('intelligence_feed', {
+          id: `intel_${today}_${index}`,
+          ...item,
+          date: item.date || today,
+          createdAt: new Date().toISOString(),
+        });
+      });
     } catch (e) {
       console.error(e);
     } finally {

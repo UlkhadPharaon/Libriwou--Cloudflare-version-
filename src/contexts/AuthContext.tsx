@@ -1,73 +1,128 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { auth, db } from '../firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
-import { isBetaEmail } from '../lib/betaConfig';
+import { onSessionChange, getCurrentUser, signOutLocal, type LocalUser } from '../services/session';
+import { localDb } from '../services/localDb';
+import {
+  loadAiConfig,
+  getProviderKey,
+  type AiConfig,
+} from '../services/ai';
+import type { Subscription } from '../services/subscription';
 
 interface AuthContextType {
-  user: User | null;
+  /** Local identity, or null before onboarding. */
+  user: LocalUser | null;
   loading: boolean;
+  /** True once a company profile exists locally. */
   hasProfile: boolean | null;
-  isBeta: boolean;
-  refreshProfile: () => Promise<void>;
+  /** Subscription document read from the local `subscriptions` collection. */
+  subscription: Subscription | null;
+  /** The user's persisted AI provider/model selection. */
+  aiConfig: AiConfig;
+  /** True when a key is stored for the selected provider. */
+  aiReady: boolean;
+  refreshProfile: () => void;
   setHasProfile: (value: boolean | null) => void;
+  /** Convenience: the id used to namespace every local collection. */
+  userId: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<LocalUser | null>(() => getCurrentUser());
   const [loading, setLoading] = useState(true);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
-  const isBeta = isBetaEmail(user?.email);
+  const [aiConfig, setAiConfig] = useState<AiConfig>(() => loadAiConfig());
+  const [aiReady, setAiReady] = useState(false);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
 
-  const checkHasProfile = async (uid: string): Promise<boolean> => {
-    const path = `companies/${uid}`;
-    try {
-      const profileDoc = await getDoc(doc(db, 'companies', uid));
-      if (profileDoc.exists()) return true;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, path);
-      // fall through to localDb fallback
-    }
-    // Offline / not yet synced fallback — localDb has the beta seed immediately
-    try {
-      const { localDb } = await import('../services/localDb');
-      const local = localDb.get('companies', uid);
-      if (local) return true;
-    } catch {}
-    return false;
-  };
+  const userId = user?.id || '';
 
-  const refreshProfile = async () => {
-    if (auth.currentUser) {
-      const exists = await checkHasProfile(auth.currentUser.uid);
-      setHasProfile(exists);
-    }
-  };
-
+  // Local identity — replaces Firebase's onAuthStateChanged.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      console.log("Auth State Changed. User:", currentUser?.uid);
-      if (currentUser) {
-        const exists = await checkHasProfile(currentUser.uid);
-        setHasProfile(exists);
-      } else {
-        setHasProfile(null);
-      }
-      setLoading(false);
+    const current = getCurrentUser();
+    setUser(current);
+    setLoading(false);
+    return onSessionChange((next) => {
+      setUser(next);
+      if (!next) setHasProfile(null);
     });
-
-    return () => unsubscribe();
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, loading, hasProfile, isBeta, refreshProfile, setHasProfile }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  // Company profile lives in the local `companies` collection.
+  useEffect(() => {
+    if (!userId) {
+      setHasProfile(null);
+      return;
+    }
+    const check = () => {
+      const local = localDb.get('companies', userId);
+      setHasProfile(!!local);
+    };
+    check();
+    const unsubscribe = localDb.subscribe('companies', userId, () => check());
+    // Startup race: on a cold page load the IndexedDB cache is still empty when this
+    // effect first runs, which used to send an already-onboarded user back to
+    // /onboarding. Re-check once storage has been hydrated.
+    localDb.whenReady(check);
+    return unsubscribe;
+  }, [userId]);
+
+  // AI configuration + whether a key is actually stored.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const config = loadAiConfig();
+      const key = await getProviderKey(config.providerId);
+      if (cancelled) return;
+      setAiConfig(config);
+      setAiReady(!!key);
+    };
+    check();
+
+    // Another tab may have changed the config or the key vault.
+    const onVisible = () => check();
+    window.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, []);
+
+  const refreshProfile = () => {
+    if (userId) {
+      const local = localDb.get('companies', userId);
+      setHasProfile(!!local);
+    }
+  };
+
+  // Subscription state for feature gating (local-first; a Stripe webhook would
+  // write the same document once a backend exists).
+  useEffect(() => {
+    if (!userId) {
+      setSubscription(null);
+      return;
+    }
+    return localDb.subscribe('subscriptions', userId, (rows) => {
+      setSubscription((rows[0] as Subscription) ?? null);
+    });
+  }, [userId]);
+
+  const value: AuthContextType = {
+    user,
+    loading,
+    hasProfile,
+    subscription,
+    aiConfig,
+    aiReady,
+    refreshProfile,
+    setHasProfile,
+    userId,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
@@ -76,4 +131,9 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+/** Sign out of the local session (data is kept on the device). */
+export function useSignOut() {
+  return () => signOutLocal();
 }

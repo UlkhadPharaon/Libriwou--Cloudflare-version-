@@ -9,8 +9,15 @@
   "vars": {
     "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
     "OPENROUTER_CHAT_MODEL": "inclusionai/ling-3.0-flash-vl:free",
-    "OPENROUTER_VISION_MODEL": "inclusionai/ling-3.0-flash-vl:free",
-    "VITE_BETA_EMAIL": "beta@libriwouo.bf",
-    "VITE_BETA_PASSWORD": "LibriwouoBeta2026!"
+    "OPENROUTER_VISION_MODEL": "inclusionai/ling-3.0-flash-vl:free"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "INTEL_CACHE",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ],
+  "observability": {
+    "enabled": true
   }
 }

@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Users, Plus, DollarSign, User, Phone, Mail, Calendar, Briefcase, FileText, MoreVertical, Edit2, Trash2 } from 'lucide-react';
-import { db } from '../firebase';
 import { localDb } from '../services/localDb';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '../lib/firebaseUtils';
+import { transactionSchema, validate } from '../lib/schemas';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
@@ -27,7 +25,7 @@ const CONTRACTS = ['CDI', 'CDD', 'Stage', 'Prestation / Freelance', 'Apprenti'];
 const STATUSES = ['Actif', 'En congé', 'Ancien'];
 
 export function PayrollPage() {
-  const { user } = useAuth();
+  const { userId } = useAuth();
   const navigate = useNavigate();
   const [employees, setEmployees] = useState<Employee[]>([]);
   
@@ -39,41 +37,23 @@ export function PayrollPage() {
   });
 
   useEffect(() => {
-    if (!user) return;
-    // Local-first: instant UI, survives offline. Firestore as optional cloud sync if available.
-    const unsubLocal = localDb.subscribe('employees', user.uid, (list) => {
+    if (!userId) return;
+    // Local-first: instant UI, survives offline — the local store is the source of truth.
+    const unsubLocal = localDb.subscribe('employees', userId, (list) => {
       setEmployees(list as Employee[]);
     });
-    // Best-effort cloud sync: if Firestore has newer data, it will still merge via localDb on other path, but we try to hydrate once
-    let unsubCloud: (()=>void)|null = null;
-    try {
-      const q = query(collection(db, 'employees'), where('userId', '==', user.uid));
-      unsubCloud = onSnapshot(q, (snap) => {
-        const cloud = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
-        // Merge into localDb if cloud has items local doesn't (one-way hydration)
-        const localIds = new Set((localDb.getAll('employees', user.uid) as any[]).map(e=>e.id));
-        let added = 0;
-        for (const e of cloud) if (!localIds.has(e.id)) { localDb.add('employees', e); added++; }
-        if (added>0) console.log(`[Payroll] hydrated ${added} employees from cloud`);
-      }, (err)=> console.warn("[Payroll] cloud snapshot failed (offline ok)", err));
-    } catch(e){ console.warn("[Payroll] cloud subscribe failed", e); }
-    return () => { unsubLocal(); if(unsubCloud) unsubCloud(); };
-  }, [user]);
+    return () => { unsubLocal(); };
+  }, [userId]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !formData.name) return;
-    const payload = { userId: user.uid, ...formData, salary: Number(formData.salary) || 0 };
+    if (!userId || !formData.name) return;
+    const payload = { userId, ...formData, salary: Number(formData.salary) || 0 };
     try {
       if (editingId) {
         localDb.update('employees', editingId, payload);
-        try { await updateDoc(doc(db, 'employees', editingId), payload); } catch(e){ console.warn("[Payroll] Firestore update failed (local preserved)", e); }
       } else {
-        const localId = localDb.add('employees', payload);
-        try { const ref = await addDoc(collection(db, 'employees'), payload as any); // keep cloud id aligned if possible
-          // If cloud generated different id, keep local id as source of truth — no-op
-          void ref; void localId;
-        } catch(e){ console.warn("[Payroll] Firestore add failed (local preserved)", e); }
+        localDb.add('employees', payload);
       }
     } catch(err){ console.error("[Payroll] save failed", err); }
     closeForm();
@@ -94,15 +74,14 @@ export function PayrollPage() {
   const deleteEmp = async (id: string) => {
     if (confirm('Souhaitez-vous vraiment retirer ce collaborateur ?')) {
       localDb.delete('employees', id);
-      try { await deleteDoc(doc(db, 'employees', id)); } catch(e){ console.warn("[Payroll] Firestore delete failed (local preserved)", e); }
     }
   };
 
   const payEmployee = async (emp: Employee) => {
-    if (!user) return;
+    if (!userId) return;
     if (confirm(`Enregistrer le paiement du salaire de ${emp.name} (${emp.salary.toLocaleString('fr-FR')} FCFA) pour ce mois ?`)) {
       const payload = {
-        userId: user.uid,
+        userId,
         type: 'EXPENSE',
         amountExclTax: emp.salary,
         vatAmount: 0,
@@ -115,8 +94,7 @@ export function PayrollPage() {
         fecValid: true,
         createdAt: new Date().toISOString()
       };
-      localDb.add('transactions', payload);
-      try { await addDoc(collection(db, 'transactions'), payload); } catch(e){ console.warn('[Payroll] Firestore sync failed (local preserved):', e); }
+      localDb.add('transactions', validate(transactionSchema, payload, 'transactions (payroll)'));
       alert(`Salaire enregistré dans vos dépenses comptables (661 Charges de personnel) !`);
     }
   };

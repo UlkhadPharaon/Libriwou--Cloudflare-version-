@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, collection, query, where, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { localDb } from '../services/localDb';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe, list, find, update } from '../services/repo';
 import { Calendar as CalendarIcon, AlertCircle, Clock, CheckCircle2, Wallet, ChevronRight, Info, ShieldCheck, PieChart, Activity, HelpCircle } from 'lucide-react';
 import { calculateTaxes, TaxCalculation } from '../lib/tax-rules';
 import { cn } from '../lib/utils';
@@ -27,9 +26,10 @@ export function CalendarPage() {
   const [taxData, setTaxData] = useState<TaxCalculation | null>(null);
   const [ytdData, setYtdData] = useState({ revenue: 0, expenses: 0 });
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
+  const { userId } = useAuth();
 
   useEffect(() => {
-    const user = auth.currentUser;
+    if (!userId) return;
     const apply = (compData: any, txs: any[]) => {
       if (compData) { setCompany(compData); generateDeadlines(compData); }
       const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
@@ -42,36 +42,17 @@ export function CalendarPage() {
       setYtdData({ revenue: rev, expenses: exp });
       setTaxData(calculateTaxes(rev, exp, (compData?.taxRegime || company?.taxRegime || 'CME') as any));
     };
-    if (user) {
-      const unsubComp = localDb.subscribe('companies', user.uid, (list) => {
-        const comp = (list[0] as any) || null;
-        if (comp) apply(comp, localDb.getAll('transactions', user.uid));
-        else {
-          import('firebase/firestore').then(({ doc: fdoc, getDoc }) => {
-            getDoc(fdoc(db, 'companies', user.uid)).then(s => { if (s.exists()) apply(s.data() as any, localDb.getAll('transactions', user.uid)); });
-          });
-        }
-      });
-      const unsubTx = localDb.subscribe('transactions', user.uid, (txs) => {
-        const comp = (localDb.getAll('companies', user.uid)[0] as any) || company;
-        apply(comp, txs as any[]);
-      });
-      return () => { unsubComp(); unsubTx(); };
-    }
-    const unsubAuth = auth.onAuthStateChanged((u) => {
-      if (!u) return;
-      const unsubComp = localDb.subscribe('companies', u.uid, (list) => {
-        if (list.length>0) { const c=list[0] as any; setCompany(c); generateDeadlines(c); }
-      });
-      const unsubTx = localDb.subscribe('transactions', u.uid, (txs) => {
-        let rev=0,exp=0; const sy=new Date(new Date().getFullYear(),0,1).toISOString();
-        (txs as any[]).forEach((t:any)=>{ if(t.date<sy) return; if(t.type==='INCOME') rev+=Number(t.amountExclTax||0); if(t.type==='EXPENSE') exp+=Number(t.amountExclTax||0); });
-        setYtdData({revenue:rev,expenses:exp}); setTaxData(calculateTaxes(rev,exp,(company?.taxRegime||'CME') as any));
-      });
-      return () => { unsubComp(); unsubTx(); };
+
+    const unsubComp = subscribe<any>('companies', (rows) => {
+      const comp = (rows[0] as any) || null;
+      if (comp) apply(comp, list<any>('transactions'));
     });
-    return () => unsubAuth();
-  }, [company?.taxRegime]);
+    const unsubTx = subscribe<any[]>('transactions', (txs) => {
+      const comp = (find<any>('companies', userId)) || company;
+      apply(comp, txs as any[]);
+    });
+    return () => { unsubComp(); unsubTx(); };
+  }, [userId, company?.taxRegime]);
 
   const generateDeadlines = (compData: any) => {
     const regime = compData.taxRegime || 'CME';
@@ -164,11 +145,13 @@ export function CalendarPage() {
   };
 
   const handleMarkAsDone = async (deadlineId: string) => {
-    if (!auth.currentUser) return;
+    if (!userId) return;
     try {
-      await updateDoc(doc(db, 'companies', auth.currentUser.uid), {
-        completedDeadlines: arrayUnion(deadlineId)
-      });
+      const companyDoc = find<any>('companies', userId);
+      const completed: string[] = Array.isArray(companyDoc?.completedDeadlines) ? companyDoc!.completedDeadlines : [];
+      if (!completed.includes(deadlineId)) {
+        update('companies', userId, { completedDeadlines: [...completed, deadlineId] });
+      }
     } catch (e) {
       console.error(e);
     }

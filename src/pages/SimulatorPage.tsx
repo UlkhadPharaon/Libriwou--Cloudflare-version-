@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
-import { collection, query, where, onSnapshot, doc, addDoc, getDocs, orderBy, serverTimestamp, deleteDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribe, list, create, remove } from '../services/repo';
 import { calculateTaxes, TaxCalculation, TaxRegime } from '../lib/tax-rules';
 import { ExtractedTransaction, sendChatMessage, UserContext } from '../services/nim';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, CartesianGrid, Cell } from 'recharts';
@@ -21,6 +21,7 @@ export function SimulatorPage() {
   const [simSector, setSimSector] = useState('service');
   const [simName, setSimName] = useState('');
   const [savedSimulations, setSavedSimulations] = useState<any[]>([]);
+  const { userId } = useAuth();
   
   const [isSaving, setIsSaving] = useState(false);
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
@@ -34,73 +35,66 @@ export function SimulatorPage() {
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) return;
+    if (!userId) return;
 
-      // Fetch Company Profile
-      const unsubscribeCompany = onSnapshot(doc(db, 'companies', user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-          const comp = docSnap.data();
-          setActualCompany(comp);
-          setSimRegime(comp.taxRegime as TaxRegime || 'CME');
-          setSimSector(comp.sector || 'service');
-        }
-      });
-
-      // Listen to Transactions
-      const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
-      const q = query(collection(db, 'transactions'), where('userId', '==', user.uid), where('date', '>=', startOfYear));
-      const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-        const txs = snapshot.docs.map(doc => doc.data() as ExtractedTransaction);
-        const rev = txs.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + (Number(t.amountExclTax) || 0), 0);
-        const exp = txs.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + (Number(t.amountExclTax) || 0), 0);
-        setActualRevenue(rev);
-        setActualExpenses(exp);
-        
-        // Only set sim initial values once
-        setSimRevenue(prev => prev === 0 ? rev : prev);
-        setSimExpenses(prev => prev === 0 ? exp : prev);
-      });
-
-      return () => {
-        unsubscribeCompany();
-        unsubscribeSnapshot();
-      };
+    // Fetch Company Profile
+    const unsubscribeCompany = subscribe<any>('companies', (rows) => {
+      const comp = rows[0];
+      if (comp) {
+        setActualCompany(comp);
+        setSimRegime(comp.taxRegime as TaxRegime || 'CME');
+        setSimSector(comp.sector || 'service');
+      }
     });
-    return () => unsubscribeAuth();
-  }, []);
+
+    // Listen to Transactions
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
+    const unsubscribeSnapshot = subscribe<ExtractedTransaction>('transactions', (rows) => {
+      const txs = rows.filter(t => t.date >= startOfYear) as ExtractedTransaction[];
+      const rev = txs.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + (Number(t.amountExclTax) || 0), 0);
+      const exp = txs.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + (Number(t.amountExclTax) || 0), 0);
+      setActualRevenue(rev);
+      setActualExpenses(exp);
+
+      // Only set sim initial values once
+      setSimRevenue(prev => prev === 0 ? rev : prev);
+      setSimExpenses(prev => prev === 0 ? exp : prev);
+    });
+
+    return () => {
+      unsubscribeCompany();
+      unsubscribeSnapshot();
+    };
+  }, [userId]);
 
   const fetchSimulations = async () => {
-      if (!auth.currentUser) return;
-      const q = query(
-          collection(db, 'simulations'), 
-          where('userId', '==', auth.currentUser.uid),
-          orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(q);
-      const sims = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (!userId) return;
+      const sims = list<any>('simulations')
+        .slice()
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
       setSavedSimulations(sims);
   };
 
   useEffect(() => {
     fetchSimulations();
-  }, []);
+  }, [userId]);
 
   const saveSimulation = async () => {
-    if (!auth.currentUser || !simName.trim()) return;
+    if (!userId || !simName.trim()) return;
     setIsSaving(true);
     try {
-      await addDoc(collection(db, 'simulations'), {
-          userId: auth.currentUser.uid,
+      create('simulations', {
+          id: `sim_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+          userId,
           name: simName.trim(),
           revenue: simRevenue,
           expenses: simExpenses,
           regime: simRegime,
           sector: simSector,
-          createdAt: serverTimestamp()
+          createdAt: new Date().toISOString()
       });
       setSimName('');
-      await fetchSimulations();
+      fetchSimulations();
     } catch (e) {
       console.error(e);
     }
@@ -109,8 +103,8 @@ export function SimulatorPage() {
 
   const deleteSimulation = async (id: string) => {
      try {
-       await deleteDoc(doc(db, 'simulations', id));
-       await fetchSimulations();
+       remove('simulations', id);
+       fetchSimulations();
      } catch(e) {
        console.error("Error deleting simulation", e);
      }
@@ -137,7 +131,7 @@ export function SimulatorPage() {
 
   const handleAiSimulate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatPrompt.trim() || !auth.currentUser) return;
+    if (!chatPrompt.trim() || !userId) return;
     
     setIsSimulating(true);
     setAiExplanation(null);
