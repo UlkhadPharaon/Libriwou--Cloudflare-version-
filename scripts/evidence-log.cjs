@@ -9,12 +9,15 @@ const path = require('path');
 const LOG = 'TO_READ/EVIDENCE/build-log.txt';
 const parts = [];
 
+/** Strips ANSI colour codes so the log is readable as plain text (GitHub, editors). */
+const clean = (s) => String(s || '').replace(/\u001b\[[0-9;]*m/g, '');
+
 const run = (label, cmd) => {
   parts.push(`--- ${label} ---`);
   try {
-    parts.push(execSync(cmd, { encoding: 'utf8' }));
+    parts.push(clean(execSync(cmd, { encoding: 'utf8' })));
   } catch (e) {
-    parts.push((e.stdout || '') + (e.stderr || ''));
+    parts.push(clean((e.stdout || '') + (e.stderr || '')));
   }
   parts.push('');
 };
